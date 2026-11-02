@@ -1,86 +1,81 @@
 'use client';
 
 import React from 'react';
+import { Shield, Phone, LogIn, LogOut, User } from 'lucide-react';
+import { AuthUser } from '@/lib/supabase';
 
 interface HeaderProps {
-  activeTab: string;
-  onOpenSafetyTips: () => void;
-  onOpenNotifications: () => void;
-  onOpenSettings: () => void;
-  unreadCount?: number;
+  currentUser: AuthUser | null;
+  onOpenLogin: () => void;
+  onSignOut: () => void;
+  onOpenHelpline: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  activeTab,
-  onOpenSafetyTips,
-  onOpenNotifications,
-  onOpenSettings,
-  unreadCount = 2,
+  currentUser,
+  onOpenLogin,
+  onSignOut,
+  onOpenHelpline,
 }) => {
   return (
-    <header className="fixed top-0 inset-x-0 z-50 bg-[#0e0e0e]/95 backdrop-blur-xl border-b border-white/[0.06] pt-safe">
+    <header className="fixed top-0 inset-x-0 z-50 bg-white/95 backdrop-blur-md border-b border-[#E5EAE5] pt-safe shadow-xs">
       <div className="h-16 max-w-lg mx-auto px-4 flex items-center justify-between gap-3">
-        {/* Brand & Tagline */}
+        {/* Brand & Tagline — NO PRO BADGE */}
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#1db954] to-[#10b981] p-0.5 flex items-center justify-center shadow-[0_0_15px_rgba(29,185,84,0.3)] shrink-0">
-            <div className="w-full h-full bg-[#131313] rounded-[10px] flex items-center justify-center">
-              <span className="material-symbols-outlined text-[20px] text-[#53e076] fill-icon">
-                shield
-              </span>
-            </div>
+          <div className="w-9 h-9 rounded-xl bg-[#EAF8EF] border border-[#1DB954]/25 flex items-center justify-center text-[#1DB954] shadow-xs shrink-0">
+            <Shield className="w-5 h-5 fill-[#1DB954]/20 stroke-[2.2]" />
           </div>
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold text-white tracking-tight truncate leading-none">
+              <span className="text-base font-bold text-[#191C19] tracking-tight leading-none">
                 SCAM GUARD
               </span>
-              <span className="px-1.5 py-0.2 rounded-full bg-[#1db954]/20 border border-[#1db954]/30 text-[#53e076] text-[9px] font-semibold uppercase tracking-wider">
-                PRO
-              </span>
             </div>
-            <span className="text-[11px] text-[#a1a1aa] truncate leading-tight pt-0.5">
+            <span className="text-[11px] text-[#6B756D] truncate leading-tight pt-0.5 font-medium">
               Spot the Scam. Stay Safe.
             </span>
           </div>
         </div>
 
-        {/* Quick Header Actions */}
-        <div className="flex items-center gap-1 shrink-0">
+        {/* Action Controls */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Emergency 1930 Dial Action */}
           <button
-            onClick={onOpenSafetyTips}
-            aria-label="Safety Guides"
-            className="w-10 h-10 flex items-center justify-center rounded-full text-[#a1a1aa] hover:text-white hover:bg-white/[0.08] active:scale-95 transition-all"
-            title="Safety Guides & Helpline"
+            onClick={onOpenHelpline}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-[#D64545] border border-red-200 text-xs font-bold active:scale-95 transition-all shadow-xs"
+            title="Emergency Cybercrime Helpline: Dial 1930"
           >
-            <span className="material-symbols-outlined text-[21px]">
-              local_police
-            </span>
+            <Phone className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>1930</span>
           </button>
 
-          <button
-            onClick={onOpenNotifications}
-            aria-label="Scam Alerts"
-            className="relative w-10 h-10 flex items-center justify-center rounded-full text-[#a1a1aa] hover:text-white hover:bg-white/[0.08] active:scale-95 transition-all"
-            title="Threat Radar Alerts"
-          >
-            <span className="material-symbols-outlined text-[21px]">
-              notifications
-            </span>
-            {unreadCount > 0 && (
-              <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-[#1db954] ring-2 ring-[#0e0e0e] animate-pulse" />
-            )}
-          </button>
-
-          <button
-            onClick={onOpenSettings}
-            aria-label="Settings and Privacy"
-            className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#1db954] to-[#53e076] flex items-center justify-center ml-1 shrink-0 active:scale-95 transition-all shadow-sm"
-            title="Privacy & Settings"
-          >
-            <span className="material-symbols-outlined text-[#002108] text-[18px] font-bold">
-              settings
-            </span>
-          </button>
+          {/* User Authentication Status */}
+          {currentUser ? (
+            <div className="flex items-center gap-1.5 bg-[#F7F9F7] p-1 pr-2 rounded-xl border border-[#E5EAE5]">
+              <div
+                className="w-7 h-7 rounded-lg bg-[#EAF8EF] border border-[#1DB954]/30 text-[#1DB954] flex items-center justify-center font-bold text-xs"
+                title={`Signed in as ${currentUser.email}`}
+              >
+                {currentUser.name ? currentUser.name[0].toUpperCase() : <User className="w-3.5 h-3.5" />}
+              </div>
+              <button
+                onClick={onSignOut}
+                aria-label="Sign out"
+                className="p-1 text-[#6B756D] hover:text-[#D64545] transition-colors"
+                title="Sign Out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onOpenLogin}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1DB954] hover:bg-[#169C46] text-white text-xs font-semibold shadow-xs active:scale-95 transition-all"
+            >
+              <LogIn className="w-3.5 h-3.5 stroke-[2.2]" />
+              <span>Sign In</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

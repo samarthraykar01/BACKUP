@@ -1,55 +1,68 @@
 'use client';
 
 import React from 'react';
+import { LayoutDashboard, QrCode, MessageSquare, Link2, Bot } from 'lucide-react';
+import { AppModule } from '@/lib/types';
 
-export type NavTab = 'home' | 'check' | 'qr-and-pay' | 'messages' | 'reports';
+export { type AppModule, type NavTab } from '@/lib/types';
 
 interface BottomNavProps {
-  activeTab: NavTab;
-  onTabChange: (tab: NavTab) => void;
+  activeModule: AppModule;
+  onSelectModule: (module: AppModule) => void;
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) => {
-  const navItems: { id: NavTab; label: string; icon: string }[] = [
-    { id: 'home', label: 'Home', icon: 'home' },
-    { id: 'check', label: 'Check', icon: 'verified_user' },
-    { id: 'qr-and-pay', label: 'QR & Pay', icon: 'qr_code_scanner' },
-    { id: 'messages', label: 'Messages', icon: 'chat_bubble' },
-    { id: 'reports', label: 'Reports', icon: 'flag' },
+export const BottomNav: React.FC<BottomNavProps> = ({
+  activeModule,
+  onSelectModule,
+}) => {
+  const navTabs: { id: AppModule; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'qr-scanner', label: 'QR & UPI', icon: QrCode },
+    { id: 'fake-message', label: 'Messages', icon: MessageSquare },
+    { id: 'fraud-link', label: 'Links', icon: Link2 },
+    { id: 'safety-assistant', label: 'Assistant', icon: Bot },
   ];
 
   return (
     <nav
-      className="fixed bottom-0 inset-x-0 z-50 pb-safe bg-[#0e0e0e]/95 backdrop-blur-xl border-t border-white/[0.06]"
-      aria-label="Main Navigation"
+      className="fixed bottom-0 inset-x-0 z-50 pb-safe bg-white/95 backdrop-blur-md border-t border-[#E5EAE5] shadow-[0_-2px_10px_rgba(0,0,0,0.03)]"
+      aria-label="Main Security Modules"
     >
-      <div className="max-w-lg mx-auto flex justify-around items-center h-16 px-1">
-        {navItems.map((item) => {
-          const isActive = activeTab === item.id;
+      <div className="max-w-lg mx-auto flex justify-around items-center h-16 px-2">
+        {navTabs.map((tab) => {
+          const isActive =
+            activeModule === tab.id ||
+            (tab.id === 'qr-scanner' && activeModule === 'upi-verify') ||
+            (tab.id === 'dashboard' && activeModule === 'fraud-network');
+
+          const IconComponent = tab.icon;
+
           return (
             <button
-              key={item.id}
-              onClick={() => onTabChange(item.id)}
-              className={`flex flex-col items-center justify-center gap-0.5 min-w-[60px] h-13 px-2 rounded-xl transition-all ${
+              key={tab.id}
+              onClick={() => onSelectModule(tab.id)}
+              className={`flex flex-col items-center justify-center gap-1 min-w-[58px] py-1.5 px-2 rounded-xl transition-all ${
                 isActive
-                  ? 'text-[#53e076] font-semibold scale-105'
-                  : 'text-[#a1a1aa] hover:text-white'
+                  ? 'text-[#1DB954] font-semibold'
+                  : 'text-[#6B756D] hover:text-[#191C19] active:scale-95'
               }`}
             >
-              <div className="relative flex items-center justify-center">
-                <span
-                  className={`material-symbols-outlined text-[23px] transition-transform ${
-                    isActive ? 'fill-icon' : ''
-                  }`}
-                >
-                  {item.icon}
-                </span>
+              <div
+                className={`relative flex items-center justify-center p-1 rounded-xl transition-all ${
+                  isActive ? 'bg-[#EAF8EF] text-[#1DB954]' : ''
+                }`}
+              >
+                <IconComponent className={`w-5 h-5 ${isActive ? 'stroke-[2.4]' : 'stroke-[1.8]'}`} />
                 {isActive && (
-                  <span className="absolute -bottom-1 w-1 h-1 rounded-full bg-[#53e076]" />
+                  <span className="absolute -bottom-0.5 w-1.5 h-1.5 rounded-full bg-[#1DB954]" />
                 )}
               </div>
-              <span className="text-[10px] tracking-tight truncate">
-                {item.label}
+              <span
+                className={`text-[11px] tracking-tight leading-none ${
+                  isActive ? 'font-bold text-[#169C46]' : 'font-normal'
+                }`}
+              >
+                {tab.label}
               </span>
             </button>
           );

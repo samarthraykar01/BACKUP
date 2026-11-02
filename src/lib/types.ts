@@ -1,5 +1,16 @@
 export type ScamCategory = 'phone' | 'email' | 'url' | 'message' | 'upi';
 
+export type AppModule =
+  | 'dashboard'
+  | 'qr-scanner'
+  | 'fake-message'
+  | 'fraud-link'
+  | 'upi-verify'
+  | 'fraud-network'
+  | 'safety-assistant';
+
+export type NavTab = AppModule | 'home' | 'check' | 'qr-and-pay' | 'messages' | 'reports';
+
 export type RiskLevel = 'safe' | 'suspicious' | 'danger' | 'unknown';
 
 export interface AnalysisFinding {

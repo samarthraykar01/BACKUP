@@ -1,101 +1,187 @@
 'use client';
 
 import React, { useState } from 'react';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import {
+  X,
+  Settings,
+  Database,
+  Trash2,
+  CheckCircle2,
+  Lock
+} from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  isSupabaseConnected: boolean;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
+  isSupabaseConnected,
 }) => {
-  const [offlineScanning, setOfflineScanning] = useState(true);
-  const [cacheCleared, setCacheCleared] = useState(false);
+  const [clearedNotice, setClearedNotice] = useState(false);
 
   if (!isOpen) return null;
 
   const handleClearCache = () => {
-    localStorage.clear();
-    setCacheCleared(true);
-    setTimeout(() => setCacheCleared(false), 2000);
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.clear();
+        sessionStorage.clear();
+      }
+      setClearedNotice(true);
+      setTimeout(() => setClearedNotice(false), 2500);
+    } catch (e) {
+      console.warn('Local storage clear error:', e);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-lg bg-[#1c1b1b] rounded-t-3xl sm:rounded-3xl border border-white/[0.08] p-5 shadow-2xl max-h-[85vh] overflow-y-auto space-y-4 pb-safe">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
+      <div className="w-full max-w-lg bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden my-auto max-h-[90vh] flex flex-col">
+        {/* Modal Header */}
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
           <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[20px] text-[#1db954]">
-              tune
-            </span>
-            <h3 className="text-sm font-bold text-white">
-              Shield Settings & Privacy
-            </h3>
+            <div className="w-8 h-8 rounded-xl bg-slate-200 text-slate-800 flex items-center justify-center">
+              <Settings className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 leading-none">
+                Settings & Threat Engine
+              </h2>
+              <span className="text-[11px] text-slate-500">
+                System Diagnostics & Privacy
+              </span>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[#a1a1aa] hover:text-white hover:bg-white/[0.08]"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-all"
           >
-            <span className="material-symbols-outlined text-[20px]">close</span>
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Backend & Shield Status */}
-        <div className="p-3 bg-[#131313] rounded-xl border border-white/[0.05] space-y-2 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-white font-medium">Supabase Cloud Sync</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                isSupabaseConfigured
-                  ? 'bg-[#1db954]/15 text-[#53e076] border border-[#1db954]/30'
-                  : 'bg-amber-500/15 text-[#f9bc45] border border-amber-500/30'
-              }`}
-            >
-              {isSupabaseConfigured ? 'Connected' : 'Local Fallback Active'}
-            </span>
+        {/* Modal Body */}
+        <div className="p-5 overflow-y-auto space-y-4">
+          {/* Backend Status Section */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Backend Infrastructure
+            </h3>
+
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Database className="w-4 h-4 text-slate-600" />
+                  <span className="text-xs font-semibold text-slate-800">
+                    Supabase PostgreSQL Storage
+                  </span>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                    isSupabaseConnected
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : 'bg-amber-100 text-amber-800 border border-amber-300'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      isSupabaseConnected ? 'bg-emerald-600' : 'bg-amber-600'
+                    }`}
+                  />
+                  {isSupabaseConnected ? 'Connected' : 'Local Fallback Active'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-snug">
+                {isSupabaseConnected
+                  ? 'Real-time synchronization with Supabase threat radar database.'
+                  : 'Operating in high-availability local fallback mode with pre-seeded threat indicators. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to enable live cloud database sync.'}
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <span className="text-white font-medium">Heuristic Threat Engine</span>
-            <span className="text-[#53e076] text-[11px] font-semibold">
-              Active v2.4
-            </span>
+          {/* Engine Parameters */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Heuristic Engine
+            </h3>
+
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5 text-xs">
+              <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                <span className="text-slate-600">Deterministic Rule Engine</span>
+                <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[11px]">
+                  Enabled
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                <span className="text-slate-600">Heuristic Database Revision</span>
+                <span className="font-mono font-medium text-slate-800 text-[11px]">
+                  v2026.11-rc1
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-600">Camera QR Decoder</span>
+                <span className="font-semibold text-slate-800 text-[11px]">
+                  jsQR 1.4.0 (Client-side)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Data & Privacy Actions */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Privacy & Local Data
+            </h3>
+
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  SCAM GUARD processes phone numbers, links, and messages without storing personal user identities. No authentication, logins, or payment linkages are required.
+                </p>
+              </div>
+
+              <button
+                onClick={handleClearCache}
+                className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 active:scale-98 text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-all shadow-2xs"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-slate-500" />
+                <span>Clear Local Device Cache</span>
+              </button>
+
+              {clearedNotice && (
+                <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 text-center flex items-center justify-center gap-1 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Local cache cleared successfully!</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* App Info */}
+          <div className="pt-2 text-center space-y-1">
+            <div className="font-bold text-xs text-slate-800">
+              SCAM GUARD
+            </div>
+            <div className="text-[11px] text-slate-500">
+              Spot the Scam. Stay Safe. • Mobile-First Security
+            </div>
           </div>
         </div>
 
-        {/* Privacy Pledge */}
-        <div className="p-3.5 bg-[#1db954]/10 border border-[#1db954]/25 rounded-2xl space-y-1 text-xs">
-          <div className="flex items-center gap-1.5 text-[#53e076] font-bold text-[11px] uppercase tracking-wide">
-            <span className="material-symbols-outlined text-[16px] fill-icon">
-              verified_user
-            </span>
-            <span>Zero-Knowledge Privacy Pledge</span>
-          </div>
-          <p className="text-[#a1a1aa] text-[11px] leading-relaxed">
-            SCAM GUARD never accesses your personal contacts, SMS inbox, banking credentials, PAN, or Aadhaar. All scans are analyzed using privacy-safe local heuristics and anonymous crowdsourced threat radars.
-          </p>
-        </div>
-
-        {/* Local Storage Clear */}
-        <div className="pt-2">
+        {/* Footer */}
+        <div className="p-3 border-t border-slate-200 bg-slate-50 text-center">
           <button
-            onClick={handleClearCache}
-            className="w-full py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-xs text-[#a1a1aa] hover:text-white font-medium transition-colors"
+            onClick={onClose}
+            className="w-full py-2 px-4 bg-slate-900 text-white font-semibold rounded-xl text-xs hover:bg-black transition-all"
           >
-            {cacheCleared ? 'Local Cache Reset!' : 'Clear Local Scan History & Cache'}
+            Close Settings
           </button>
         </div>
-
-        <button
-          onClick={onClose}
-          className="w-full py-2.5 bg-white/[0.08] hover:bg-white/[0.12] text-white font-medium rounded-xl text-xs transition-colors"
-        >
-          Save & Exit
-        </button>
       </div>
     </div>
   );

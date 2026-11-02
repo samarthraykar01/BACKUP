@@ -4,18 +4,17 @@ import { checkCommunityBlacklist } from '@/lib/supabase';
 import { ScamCategory } from '@/lib/types';
 
 export async function POST(req: NextRequest) {
-  let body: any;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(
-      { error: 'Invalid or malformed JSON payload in request body.' },
-      { status: 400 }
-    );
-  }
-
-  try {
-    const { target, category } = body;
+    let body: Record<string, unknown> | null = null;
+    try {
+      body = (await req.json()) as Record<string, unknown>;
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid JSON payload received.' },
+        { status: 400 }
+      );
+    }
+    const { target, category } = (body || {}) as { target?: string; category?: string };
 
     if (!target || typeof target !== 'string' || target.trim().length === 0) {
       return NextResponse.json(
@@ -31,8 +30,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const validCategories: ScamCategory[] = ['phone', 'email', 'url', 'message', 'upi'];
-    const selectedCategory = validCategories.includes(category) ? (category as ScamCategory) : undefined;
+    const selectedCategory: ScamCategory | undefined =
+      category === 'phone' ||
+      category === 'email' ||
+      category === 'url' ||
+      category === 'message' ||
+      category === 'upi'
+        ? (category as ScamCategory)
+        : undefined;
 
     // Perform deterministic heuristic analysis
     const result = universalAnalyze(target, selectedCategory);
@@ -57,7 +62,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('API /api/check error:', err);
     return NextResponse.json(
       { error: 'Internal server error while analyzing input. Please retry.' },

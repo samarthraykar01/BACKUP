@@ -1,465 +1,224 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { CommunityReport, ScamCategory } from '@/lib/types';
+import {
+  Search,
+  Plus,
+  ThumbsUp,
+  Phone,
+  Link2,
+  Mail,
+  MessageSquare,
+  QrCode,
+  ShieldAlert,
+  User,
+  Clock
+} from 'lucide-react';
 
 interface ReportsScreenProps {
-  prefillTarget?: string;
-  prefillCategory?: string;
-  onClearPrefill?: () => void;
+  reports: CommunityReport[];
+  onUpvote: (id: string) => void;
+  onOpenReportModal: (target?: string, category?: ScamCategory) => void;
 }
 
 export const ReportsScreen: React.FC<ReportsScreenProps> = ({
-  prefillTarget = '',
-  prefillCategory = '',
-  onClearPrefill,
+  reports,
+  onUpvote,
+  onOpenReportModal,
 }) => {
-  const [activeTab, setActiveTab] = useState<'feed' | 'report'>('feed');
-  const [reports, setReports] = useState<CommunityReport[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<ScamCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isLoadingFeed, setIsLoadingFeed] = useState(true);
+  const [selectedFilter, setSelectedFilter] = useState<ScamCategory | 'all'>('all');
 
-  // Form State
-  const [formCategory, setFormCategory] = useState<ScamCategory>(
-    (prefillCategory as ScamCategory) || 'phone'
-  );
-  const [formTarget, setFormTarget] = useState(prefillTarget);
-  const [formScamType, setFormScamType] = useState('Electricity Bill Extortion');
-  const [formDescription, setFormDescription] = useState('');
-  const [formReporter, setFormReporter] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [formSuccess, setFormSuccess] = useState(false);
-
-  useEffect(() => {
-    if (prefillTarget) {
-      setFormTarget(prefillTarget);
-      if (prefillCategory && ['phone', 'email', 'url', 'message', 'upi'].includes(prefillCategory)) {
-        setFormCategory(prefillCategory as ScamCategory);
-      }
-      setActiveTab('report');
-    }
-  }, [prefillTarget, prefillCategory]);
-
-  const loadReports = async () => {
-    setIsLoadingFeed(true);
-    try {
-      const url = new URL('/api/reports', window.location.origin);
-      if (selectedCategory !== 'all') {
-        url.searchParams.set('category', selectedCategory);
-      }
-      if (searchQuery.trim()) {
-        url.searchParams.set('q', searchQuery.trim());
-      }
-
-      const res = await fetch(url.toString());
-      if (res.ok) {
-        const data = await res.json();
-        setReports(data.reports || []);
-      }
-    } catch (e) {
-      console.warn('Failed to load reports:', e);
-    } finally {
-      setIsLoadingFeed(false);
-    }
-  };
-
-  useEffect(() => {
-    loadReports();
-  }, [selectedCategory, searchQuery]);
-
-  const handleSubmitReport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanTarget = formTarget.trim();
-    const cleanDesc = formDescription.trim();
-
-    if (!cleanTarget) {
-      setFormError('Please provide the scammer telephone number, link, or UPI ID.');
-      return;
-    }
-    if (cleanDesc.length < 10) {
-      setFormError('Please describe the incident in at least 10 characters.');
-      return;
-    }
-
-    setFormError(null);
-    setIsSubmitting(true);
-
-    try {
-      const res = await fetch('/api/reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target: cleanTarget,
-          category: formCategory,
-          scamType: formScamType,
-          description: cleanDesc,
-          reporterName: formReporter.trim() || undefined,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to submit report.');
-      }
-
-      setFormSuccess(true);
-      setFormTarget('');
-      setFormDescription('');
-      if (onClearPrefill) onClearPrefill();
-      loadReports();
-
-      setTimeout(() => {
-        setFormSuccess(false);
-        setActiveTab('feed');
-      }, 2000);
-    } catch (err: any) {
-      setFormError(err.message || 'Submission error.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleUpvote = async (reportId: string) => {
-    try {
-      const res = await fetch('/api/reports', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reportId }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setReports((prev) =>
-          prev.map((r) => (r.id === reportId ? { ...r, upvotes: data.upvotes } : r))
-        );
-      }
-    } catch (e) {
-      console.warn('Upvote error:', e);
-    }
-  };
-
-  const scamTypes = [
-    'Electricity Bill Extortion',
-    'Bank KYC / PAN Suspension',
-    'Part-Time Task / Telegram Job',
-    'FedEx / Customs Detention',
-    'OLX QR Code / PIN Scam',
-    'Lottery / KBC Cash Prize',
-    'Loan Approval Processing Fee',
-    'Police / CBI Video Call Extortion',
-    'Other Financial Scam',
+  const filterTabs: { id: ScamCategory | 'all'; label: string }[] = [
+    { id: 'all', label: 'All Reports' },
+    { id: 'phone', label: 'Phones' },
+    { id: 'url', label: 'Links' },
+    { id: 'upi', label: 'UPI / QR' },
+    { id: 'message', label: 'Messages' },
+    { id: 'email', label: 'Emails' },
   ];
 
+  const getCategoryIcon = (category: ScamCategory) => {
+    switch (category) {
+      case 'phone':
+        return Phone;
+      case 'url':
+        return Link2;
+      case 'email':
+        return Mail;
+      case 'message':
+        return MessageSquare;
+      case 'upi':
+        return QrCode;
+    }
+  };
+
+  const filteredReports = reports.filter((rep) => {
+    const matchesCategory = selectedFilter === 'all' || rep.category === selectedFilter;
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return matchesCategory;
+
+    const matchesSearch =
+      rep.target.toLowerCase().includes(q) ||
+      rep.scamType.toLowerCase().includes(q) ||
+      rep.description.toLowerCase().includes(q);
+
+    return matchesCategory && matchesSearch;
+  });
+
+  const formatDate = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-IN', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return 'Recently';
+    }
+  };
+
   return (
-    <div className="flex flex-col w-full px-4 pt-3 pb-24 space-y-4 max-w-lg mx-auto">
-      {/* Title */}
-      <div className="flex flex-col space-y-1">
-        <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-          <span className="material-symbols-outlined text-[#53e076] text-[22px]">
-            flag
-          </span>
-          Community Scam Radar
-        </h1>
-        <p className="text-xs text-[#a1a1aa] leading-relaxed">
-          Crowdsourced scam intelligence. Warn fellow citizens and verify emerging fraud patterns.
-        </p>
-      </div>
-
-      {/* Screen Mode Tabs */}
-      <div className="flex p-1 bg-[#1c1b1b] rounded-xl border border-white/[0.06] gap-1">
+    <div className="w-full max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4 animate-in fade-in duration-150">
+      {/* Screen Title & Action */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+            Community Threat Radar
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Crowdsourced scam intelligence. Verified by citizens, protected by SCAM GUARD.
+          </p>
+        </div>
         <button
-          onClick={() => setActiveTab('feed')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-            activeTab === 'feed'
-              ? 'bg-[#131313] text-[#53e076] border border-[#1db954]/30 shadow-sm'
-              : 'text-[#a1a1aa] hover:text-white'
-          }`}
+          onClick={() => onOpenReportModal()}
+          className="py-2 px-3 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm shrink-0 transition-all"
         >
-          <span className="material-symbols-outlined text-[17px]">radar</span>
-          <span>Threat Radar Feed</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('report')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-            activeTab === 'report'
-              ? 'bg-[#131313] text-[#53e076] border border-[#1db954]/30 shadow-sm'
-              : 'text-[#a1a1aa] hover:text-white'
-          }`}
-        >
-          <span className="material-symbols-outlined text-[17px]">
-            add_circle
-          </span>
-          <span>Report a Scammer</span>
+          <Plus className="w-4 h-4" />
+          <span>Report Scam</span>
         </button>
       </div>
 
-      {/* Mode 1: Community Radar Feed */}
-      {activeTab === 'feed' && (
-        <div className="space-y-3">
-          {/* Search bar */}
-          <div className="flex items-center gap-2 px-3 py-2 bg-[#1c1b1b] rounded-xl border border-white/[0.06] focus-within:border-[#1db954] transition-all">
-            <span className="material-symbols-outlined text-[18px] text-[#71717a]">
-              search
-            </span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search phone number, link, or keyword..."
-              className="w-full bg-transparent text-xs text-white placeholder:text-[#71717a] focus:outline-none"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="text-[#a1a1aa] hover:text-white text-xs"
-              >
-                Clear
-              </button>
-            )}
+      {/* Search Input */}
+      <div className="relative">
+        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search by phone, URL, or keyword..."
+          className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all shadow-2xs"
+        />
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+        {filterTabs.map((tab) => {
+          const isSelected = selectedFilter === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setSelectedFilter(tab.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all shrink-0 ${
+                isSelected
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Reports Count Header */}
+      <div className="flex items-center justify-between text-xs text-slate-500 px-0.5">
+        <span>Showing {filteredReports.length} Active Threat Reports</span>
+        <span className="text-[11px] text-emerald-700 font-medium">Auto-Synced</span>
+      </div>
+
+      {/* Reports Feed */}
+      <div className="space-y-3">
+        {filteredReports.length === 0 ? (
+          <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 space-y-2">
+            <ShieldAlert className="w-8 h-8 text-slate-400 mx-auto" />
+            <div className="text-xs font-bold text-slate-700">No matching threat reports</div>
+            <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+              No community reports found for this query. If you encountered a scam attempt, help protect others by reporting it.
+            </p>
+            <button
+              onClick={() => onOpenReportModal()}
+              className="mt-2 py-2 px-3.5 rounded-xl bg-emerald-600 text-white font-semibold text-xs inline-flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Submit First Report</span>
+            </button>
           </div>
-
-          {/* Category Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-            {(['all', 'phone', 'url', 'upi', 'email', 'message'] as const).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-full capitalize shrink-0 font-medium transition-all ${
-                  selectedCategory === cat
-                    ? 'bg-[#1db954] text-black font-semibold'
-                    : 'bg-[#1c1b1b] text-[#a1a1aa] hover:text-white border border-white/[0.06]'
-                }`}
+        ) : (
+          filteredReports.map((report) => {
+            const Icon = getCategoryIcon(report.category);
+            return (
+              <div
+                key={report.id}
+                className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs hover:border-slate-300 transition-all space-y-2.5"
               >
-                {cat === 'all' ? 'All Alerts' : cat}
-              </button>
-            ))}
-          </div>
-
-          {/* Feed List */}
-          {isLoadingFeed ? (
-            <div className="p-8 flex flex-col items-center justify-center text-center space-y-2 text-[#a1a1aa]">
-              <span className="w-5 h-5 border-2 border-[#1db954] border-t-transparent rounded-full animate-spin" />
-              <span className="text-xs">Connecting to Community Radar...</span>
-            </div>
-          ) : reports.length === 0 ? (
-            <div className="p-8 bg-[#1c1b1b] rounded-2xl border border-white/[0.06] flex flex-col items-center justify-center text-center space-y-2">
-              <span className="material-symbols-outlined text-[32px] text-[#71717a]">
-                shield_moon
-              </span>
-              <span className="text-sm font-semibold text-white">
-                No Matching Reports
-              </span>
-              <span className="text-xs text-[#a1a1aa] max-w-xs">
-                No recorded scam alerts match your filter. Be the first to report an incident.
-              </span>
-              <button
-                onClick={() => setActiveTab('report')}
-                className="mt-2 px-4 py-2 bg-[#1db954] text-black font-semibold rounded-xl text-xs"
-              >
-                Report Now
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {reports.map((report) => (
-                <div
-                  key={report.id}
-                  className="p-3.5 bg-[#1c1b1b] rounded-2xl border border-white/[0.06] hover:border-white/[0.1] transition-all space-y-2"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex flex-col min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-white/[0.06] text-[#a1a1aa]">
-                          {report.category}
-                        </span>
-                        <span className="text-xs font-semibold text-white truncate">
-                          {report.scamType}
-                        </span>
-                      </div>
-                      <span className="text-xs font-mono font-semibold text-[#53e076] truncate mt-1">
-                        {report.target}
-                      </span>
-                    </div>
-
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/15 border border-red-500/30 text-[#ffb4ab] shrink-0">
-                      Scam Flag
+                {/* Card Top: Category, Status & Upvote */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-md bg-red-100 text-red-800 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                      <Icon className="w-3 h-3" />
+                      {report.category}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-semibold">
+                      {report.status === 'verified_scam' ? 'Community Flagged' : 'Active Report'}
                     </span>
                   </div>
 
-                  <p className="text-xs text-[#a1a1aa] leading-relaxed line-clamp-3">
-                    {report.description}
-                  </p>
+                  <button
+                    onClick={() => onUpvote(report.id)}
+                    className="px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200 active:scale-95 border border-slate-200 text-xs font-bold text-slate-700 hover:text-emerald-700 flex items-center gap-1.5 shadow-2xs transition-all shrink-0"
+                    title="Confirm this scam report"
+                  >
+                    <ThumbsUp className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{report.upvotes}</span>
+                  </button>
+                </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-[#71717a] pt-1 border-t border-white/[0.04]">
-                    <span>By {report.reporterName || 'Citizen Report'}</span>
-                    <button
-                      onClick={() => handleUpvote(report.id)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/[0.05] hover:bg-white/[0.1] text-[#53e076] font-medium transition-all active:scale-95"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">
-                        thumb_up
-                      </span>
-                      <span>{report.upvotes} Confirmations</span>
-                    </button>
+                {/* Target & Scam Type */}
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 leading-snug">
+                    {report.scamType}
+                  </h3>
+                  <div className="text-xs font-mono text-red-700 font-semibold break-all mt-0.5 bg-red-50/60 p-1 rounded inline-block">
+                    {report.target}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* Mode 2: Report a Scammer Form */}
-      {activeTab === 'report' && (
-        <div className="bg-[#1c1b1b] rounded-2xl border border-white/[0.08] p-4 shadow-[0_4px_24px_rgba(0,0,0,0.5)] space-y-4">
-          <form onSubmit={handleSubmitReport} className="space-y-3.5">
-            {/* Category */}
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-white">
-                Scam Channel / Category
-              </label>
-              <div className="grid grid-cols-5 gap-1.5">
-                {(['phone', 'upi', 'url', 'email', 'message'] as const).map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setFormCategory(c)}
-                    className={`py-2 px-1 text-center rounded-xl text-[11px] font-medium capitalize transition-all ${
-                      formCategory === c
-                        ? 'bg-[#1db954] text-black font-bold'
-                        : 'bg-[#131313] text-[#a1a1aa] hover:text-white border border-white/[0.05]'
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
+                {/* Description */}
+                <p className="text-xs text-slate-600 leading-relaxed font-sans">
+                  {report.description}
+                </p>
+
+                {/* Card Footer: Metadata & Privacy-Safe Reporter */}
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                  <div className="flex items-center gap-1">
+                    <User className="w-3 h-3 text-slate-400" />
+                    <span>{report.reporterName || 'Citizen Report'}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-slate-400" />
+                    <span>{formatDate(report.createdAt)}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-
-            {/* Target Identifier */}
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-white flex justify-between">
-                <span>Scammer Phone, Link, or UPI Address</span>
-                <span className="text-[10px] text-[#71717a]">Required</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formTarget}
-                onChange={(e) => setFormTarget(e.target.value)}
-                placeholder={
-                  formCategory === 'phone'
-                    ? '+91 98234 11209'
-                    : formCategory === 'upi'
-                    ? 'scammer@okaxis'
-                    : formCategory === 'url'
-                    ? 'https://sbi-pan-kyc.top'
-                    : formCategory === 'email'
-                    ? 'support@fake-bank.xyz'
-                    : 'Phone or message subject'
-                }
-                className="w-full bg-[#131313] text-sm text-white placeholder:text-[#71717a] px-3 py-2.5 rounded-xl border border-white/[0.06] focus:border-[#1db954] focus:outline-none transition-all font-mono"
-              />
-            </div>
-
-            {/* Scam Type / Classification */}
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-white">
-                Scam Classification
-              </label>
-              <select
-                value={formScamType}
-                onChange={(e) => setFormScamType(e.target.value)}
-                className="w-full bg-[#131313] text-sm text-white px-3 py-2.5 rounded-xl border border-white/[0.06] focus:border-[#1db954] focus:outline-none transition-all"
-              >
-                {scamTypes.map((st, i) => (
-                  <option key={i} value={st} className="bg-[#131313] text-white">
-                    {st}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Description */}
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs font-semibold text-white">
-                <span>Incident Description & Modus Operandi</span>
-                <span className="text-[10px] text-[#71717a]">
-                  {formDescription.length} / 2000
-                </span>
-              </div>
-              <textarea
-                rows={4}
-                required
-                value={formDescription}
-                onChange={(e) => setFormDescription(e.target.value)}
-                placeholder="Explain what the scammer claimed, demanded, or which apps they asked you to download..."
-                className="w-full bg-[#131313] text-xs text-white placeholder:text-[#71717a] p-3 rounded-xl border border-white/[0.06] focus:border-[#1db954] focus:outline-none transition-all resize-none leading-relaxed"
-              />
-            </div>
-
-            {/* Reporter Display Name */}
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-white flex justify-between">
-                <span>Your Name / City (Optional)</span>
-                <span className="text-[10px] text-[#71717a]">
-                  Never reveals personal contact info
-                </span>
-              </label>
-              <input
-                type="text"
-                value={formReporter}
-                onChange={(e) => setFormReporter(e.target.value)}
-                placeholder="e.g. Ramesh, Hyderabad"
-                className="w-full bg-[#131313] text-xs text-white placeholder:text-[#71717a] px-3 py-2 rounded-xl border border-white/[0.06] focus:border-[#1db954] focus:outline-none transition-all"
-              />
-            </div>
-
-            {formError && (
-              <div className="p-2.5 rounded-lg bg-red-500/15 border border-red-500/30 text-xs text-[#ffb4ab] flex items-center gap-2">
-                <span className="material-symbols-outlined text-[17px]">
-                  error
-                </span>
-                <span>{formError}</span>
-              </div>
-            )}
-
-            {formSuccess && (
-              <div className="p-3 rounded-lg bg-[#1db954]/15 border border-[#1db954]/30 text-xs text-[#53e076] flex items-center gap-2 font-medium">
-                <span className="material-symbols-outlined text-[18px]">
-                  check_circle
-                </span>
-                <span>
-                  Thank you! Your report has been broadcast to the community radar.
-                </span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full py-3 bg-[#1db954] hover:bg-[#1aa34a] disabled:opacity-50 text-black font-semibold rounded-xl text-sm shadow-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                  <span>Recording Scam Report...</span>
-                </>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-[18px]">
-                    send
-                  </span>
-                  <span>Submit Scam Report</span>
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-      )}
+            );
+          })
+        )}
+      </div>
     </div>
   );
 };

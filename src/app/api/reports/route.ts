@@ -10,24 +10,15 @@ export async function GET(req: NextRequest) {
 
     const reports = await fetchCommunityReports(category || undefined, query);
     return NextResponse.json({ reports, count: reports.length });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('API /api/reports GET error:', err);
     return NextResponse.json({ error: 'Failed to retrieve community reports.' }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
-  let body: any;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(
-      { error: 'Invalid or malformed JSON payload in request body.' },
-      { status: 400 }
-    );
-  }
-
-  try {
+    const body = await req.json();
     const { target, category, scamType, description, reporterName } = body;
 
     // Server-side validation
@@ -62,7 +53,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(result, { status: 201 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('API /api/reports POST error:', err);
     return NextResponse.json({ error: 'Failed to record community report.' }, { status: 500 });
   }
@@ -78,7 +69,7 @@ export async function PATCH(req: NextRequest) {
 
     const upvotes = await upvoteReport(reportId);
     return NextResponse.json({ success: true, upvotes });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('API /api/reports PATCH error:', err);
     return NextResponse.json({ error: 'Failed to update report upvotes.' }, { status: 500 });
   }

@@ -2,40 +2,72 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import jsQR from 'jsqr';
-import { ScamCheckResult } from '@/lib/types';
+import { ScamCheckResult, ScamCategory } from '@/lib/types';
 import { ResultCard } from './ResultCard';
+import {
+  QrCode,
+  Camera,
+  Upload,
+  AlertTriangle,
+  X,
+  RefreshCw,
+  Search,
+  Info
+} from 'lucide-react';
 
 interface QrPayScreenProps {
-  onReportClick: (target: string, category: string) => void;
+  onOpenReportModal?: (target?: string, category?: ScamCategory) => void;
+  onReportClick?: (target: string, category: string) => void;
+  onNavigateToUpi?: () => void;
 }
 
-export const QrPayScreen: React.FC<QrPayScreenProps> = ({ onReportClick }) => {
-  const [activeMode, setActiveMode] = useState<'camera' | 'upload' | 'manual'>('camera');
-  const [cameraActive, setCameraActive] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [manualUpi, setManualUpi] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [decodedData, setDecodedData] = useState<string | null>(null);
-  const [scanResult, setScanResult] = useState<ScamCheckResult | null>(null);
+export const QrPayScreen: React.FC<QrPayScreenProps> = ({
+  onOpenReportModal,
+  onReportClick,
+  onNavigateToUpi,
+}) => {
+  const [activeMode, setActiveMode] = useState<'qr' | 'upi'>('qr');
+  const [qrInputMode, setQrInputMode] = useState<'camera' | 'upload'>('upload');
 
+  // Camera state
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Stop camera when unmounting or switching modes
+  // File upload state
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // UPI Manual State
+  const [upiInput, setUpiInput] = useState('');
+  const [upiError, setUpiError] = useState<string | null>(null);
+
+  // Common Scan Result
+  const [loading, setLoading] = useState(false);
+  const [decodedData, setDecodedData] = useState<string | null>(null);
+  const [scanResult, setScanResult] = useState<ScamCheckResult | null>(null);
+
   const stopCamera = () => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setCameraActive(false);
   };
 
+  // Stop camera on unmount or tab switch
   useEffect(() => {
     return () => {
       stopCamera();
@@ -43,443 +75,465 @@ export const QrPayScreen: React.FC<QrPayScreenProps> = ({ onReportClick }) => {
   }, []);
 
   const startCamera = async () => {
-    stopCamera();
     setCameraError(null);
-    setDecodedData(null);
+    setUploadError(null);
     setScanResult(null);
+    setDecodedData(null);
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCameraError('Camera access is not supported by your current browser environment.');
+      setQrInputMode('upload');
+      return;
+    }
 
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Camera access is not supported by your current browser.');
-      }
-
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
-        audio: false,
       });
-
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.setAttribute('playsinline', 'true');
         await videoRef.current.play();
         setCameraActive(true);
-        scanFrame();
+
+        // Start scanning loop
+        scanIntervalRef.current = setInterval(() => {
+          captureAndScanFrame();
+        }, 300);
       }
-    } catch (err: any) {
-      console.warn('Camera start error:', err);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraError('Camera permission was denied. Please allow camera access in browser settings or use image upload.');
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        setCameraError('No camera found on this device. Please use the image upload option.');
-      } else {
-        setCameraError('Unable to open camera stream. Please try the upload option.');
-      }
-      setCameraActive(false);
+    } catch (err: unknown) {
+      console.warn('Camera permission denied or failed:', err);
+      setCameraError('Camera access was denied or is unavailable. Please use the image upload option below.');
+      stopCamera();
+      setQrInputMode('upload');
     }
   };
 
-  const scanFrame = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-
+  const captureAndScanFrame = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    if (video.readyState === video.HAVE_ENOUGH_DATA && ctx) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'dontInvert',
-      });
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: 'dontInvert',
+    });
 
-      if (code && code.data) {
-        // QR Code detected!
-        stopCamera();
-        handleProcessQrData(code.data);
-        return;
-      }
+    if (code && code.data) {
+      stopCamera();
+      handleScannedContent(code.data);
     }
-
-    animationFrameRef.current = requestAnimationFrame(scanFrame);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUploadError(null);
+    setScanResult(null);
+    setDecodedData(null);
+
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      setCameraError('Please select a valid image file (PNG, JPG, WebP).');
+    // Validate size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('Image size exceeds 5MB limit. Please upload a smaller image.');
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      setCameraError('Image file is too large (max 10MB).');
+    // Validate type
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+      setUploadError('Unsupported image format. Please upload JPG, PNG, or WebP.');
       return;
     }
 
-    setCameraError(null);
-    setIsLoading(true);
-
+    setSelectedFile(file);
     const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          setIsLoading(false);
-          setCameraError('Canvas rendering failed.');
-          return;
-        }
-
-        ctx.drawImage(img, 0, 0);
-        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imgData.data, imgData.width, imgData.height, {
-          inversionAttempts: 'attemptBoth',
-        });
-
-        setIsLoading(false);
-
-        if (code && code.data) {
-          handleProcessQrData(code.data);
-        } else {
-          setCameraError('No QR code could be read from this image. Ensure the QR code is clear, well-lit, and not cropped.');
-        }
-      };
-      img.src = reader.result as string;
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setFilePreview(result);
+      decodeImageQr(result);
     };
     reader.readAsDataURL(file);
   };
 
-  const handleProcessQrData = async (rawString: string) => {
-    setDecodedData(rawString);
-    setIsLoading(true);
+  const decodeImageQr = (imageSrc: string) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0, img.width, img.height);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+      if (code && code.data) {
+        handleScannedContent(code.data);
+      } else {
+        setUploadError('No valid QR code could be detected in this image. Please ensure the code is clear and well-lit.');
+      }
+    };
+    img.onerror = () => {
+      setUploadError('Failed to load image for scanning.');
+    };
+    img.src = imageSrc;
+  };
+
+  const handleScannedContent = async (rawCode: string) => {
+    setDecodedData(rawCode);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: rawCode, category: 'upi' }),
+      });
+      const data = await res.json();
+      setScanResult(data);
+    } catch {
+      setUploadError('Failed to verify scanned data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpiCheck = async () => {
+    const val = upiInput.trim();
+    if (!val) {
+      setUpiError('Please enter a UPI ID (e.g. name@bank).');
+      return;
+    }
+    if (!val.includes('@') || val.split('@').length !== 2) {
+      setUpiError('Invalid UPI ID format. Expected format: username@bankhandle');
+      return;
+    }
+
+    setUpiError(null);
+    setLoading(true);
+    setScanResult(null);
 
     try {
       const res = await fetch('/api/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target: rawString,
-          category: 'upi',
-        }),
+        body: JSON.stringify({ target: val, category: 'upi' }),
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to inspect QR payload.');
-      }
       setScanResult(data);
-    } catch (err: any) {
-      setCameraError(err.message || 'Inspection error.');
+    } catch {
+      setUpiError('Network error while checking UPI ID.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleManualCheck = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualUpi.trim()) return;
-    handleProcessQrData(manualUpi.trim());
-  };
-
   return (
-    <div className="flex flex-col w-full px-4 pt-3 pb-24 space-y-4 max-w-lg mx-auto">
-      {/* Title */}
-      <div className="flex flex-col space-y-1">
-        <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-          <span className="material-symbols-outlined text-[#53e076] text-[22px]">
-            qr_code_scanner
-          </span>
-          QR & Pay Guard
+    <div className="w-full max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4 animate-in fade-in duration-150">
+      {/* Header */}
+      <div>
+        <h1 className="text-lg font-bold text-slate-900 tracking-tight">
+          QR & UPI Payment Guard
         </h1>
-        <p className="text-xs text-[#a1a1aa] leading-relaxed">
-          Inspect UPI payment QR codes and Virtual Payment Addresses (VPA) before scanning in banking apps.
+        <p className="text-xs text-slate-500 mt-0.5">
+          Scan QR codes or verify UPI IDs. Prevent reverse-payment & PIN collection fraud.
         </p>
       </div>
 
-      {/* Critical PIN Education Banner */}
-      <div className="p-3 bg-red-500/10 border border-red-500/25 rounded-2xl flex items-start gap-2.5 text-xs text-[#ffb4ab]">
-        <span className="material-symbols-outlined text-[20px] text-[#ef4444] shrink-0 mt-0.5 fill-icon">
-          report
-        </span>
-        <div className="flex flex-col">
-          <span className="font-bold text-white text-[11px] uppercase tracking-wide">
-            Golden Rule of UPI Safety
-          </span>
-          <span className="text-[11px] leading-relaxed mt-0.5 text-zinc-300">
-            You <strong className="text-white underline">NEVER</strong> need to enter your UPI PIN to receive money, refunds, or OLX payments. Entering your UPI PIN always debits money from your bank account!
-          </span>
-        </div>
-      </div>
-
-      {/* Mode Selector */}
-      <div className="flex p-1 bg-[#1c1b1b] rounded-xl border border-white/[0.06] gap-1">
+      {/* Mode Switcher */}
+      <div className="flex bg-slate-200/80 p-1 rounded-xl">
         <button
           onClick={() => {
-            stopCamera();
-            setActiveMode('camera');
-            setCameraError(null);
+            setActiveMode('qr');
+            setScanResult(null);
+            setDecodedData(null);
           }}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-            activeMode === 'camera'
-              ? 'bg-[#131313] text-[#53e076] border border-[#1db954]/30 shadow-sm'
-              : 'text-[#a1a1aa] hover:text-white'
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            activeMode === 'qr' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <span className="material-symbols-outlined text-[17px]">
-            photo_camera
-          </span>
-          <span>Camera</span>
+          <QrCode className="w-3.5 h-3.5" />
+          <span>QR Scanner</span>
         </button>
-
         <button
           onClick={() => {
             stopCamera();
-            setActiveMode('upload');
-            setCameraError(null);
+            if (onNavigateToUpi) {
+              onNavigateToUpi();
+            } else {
+              setActiveMode('upi');
+              setScanResult(null);
+              setDecodedData(null);
+            }
           }}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-            activeMode === 'upload'
-              ? 'bg-[#131313] text-[#53e076] border border-[#1db954]/30 shadow-sm'
-              : 'text-[#a1a1aa] hover:text-white'
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            activeMode === 'upi' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <span className="material-symbols-outlined text-[17px]">
-            upload_file
-          </span>
-          <span>Image</span>
-        </button>
-
-        <button
-          onClick={() => {
-            stopCamera();
-            setActiveMode('manual');
-            setCameraError(null);
-          }}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-            activeMode === 'manual'
-              ? 'bg-[#131313] text-[#53e076] border border-[#1db954]/30 shadow-sm'
-              : 'text-[#a1a1aa] hover:text-white'
-          }`}
-        >
-          <span className="material-symbols-outlined text-[17px]">edit</span>
-          <span>UPI ID</span>
+          <Search className="w-3.5 h-3.5" />
+          <span>Verify UPI ID</span>
         </button>
       </div>
 
-      {/* Camera Mode */}
-      {activeMode === 'camera' && (
-        <div className="bg-[#1c1b1b] rounded-2xl border border-white/[0.08] p-4 shadow-[0_4px_24px_rgba(0,0,0,0.5)] space-y-3 flex flex-col items-center">
-          <div className="relative w-full aspect-square max-h-[300px] bg-black rounded-xl overflow-hidden flex items-center justify-center border border-white/[0.08]">
-            <video
-              ref={videoRef}
-              className={`w-full h-full object-cover ${cameraActive ? 'block' : 'hidden'}`}
-            />
-            <canvas ref={canvasRef} className="hidden" />
-
-            {/* Viewfinder Target Overlays */}
-            {cameraActive ? (
-              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <div className="w-48 h-48 border-2 border-[#1db954] rounded-2xl relative animate-pulse">
-                  <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-[#53e076]" />
-                  <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-[#53e076]" />
-                  <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-[#53e076]" />
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-[#53e076]" />
-                  <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-[#1db954]/60 shadow-[0_0_8px_#1db954]" />
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center p-6 text-center space-y-2">
-                <div className="w-14 h-14 rounded-full bg-white/[0.06] flex items-center justify-center text-[#a1a1aa]">
-                  <span className="material-symbols-outlined text-[28px]">
-                    videocam_off
-                  </span>
-                </div>
-                <span className="text-sm font-semibold text-white">
-                  Camera Inactive
-                </span>
-                <span className="text-xs text-[#a1a1aa] max-w-[220px]">
-                  Tap below to start scanner. Camera stream stops automatically once scanned.
-                </span>
-              </div>
-            )}
+      {/* QR Scanner Mode */}
+      {activeMode === 'qr' && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+          {/* Sub-mode selector (Upload vs Camera) */}
+          <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              QR Input Method
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  stopCamera();
+                  setQrInputMode('upload');
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
+                  qrInputMode === 'upload' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Upload className="w-3 h-3" />
+                <span>Upload Image</span>
+              </button>
+              <button
+                onClick={() => {
+                  setQrInputMode('camera');
+                  startCamera();
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
+                  qrInputMode === 'camera' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Camera className="w-3 h-3" />
+                <span>Live Camera</span>
+              </button>
+            </div>
           </div>
 
-          {cameraError && (
-            <div className="w-full p-2.5 rounded-lg bg-red-500/15 border border-red-500/30 text-xs text-[#ffb4ab] flex items-start gap-2">
-              <span className="material-symbols-outlined text-[17px] shrink-0 mt-0.5">
-                error
-              </span>
-              <span>{cameraError}</span>
-            </div>
-          )}
-
-          <div className="w-full flex gap-2">
-            {!cameraActive ? (
-              <button
-                onClick={startCamera}
-                className="w-full py-3 bg-[#1db954] hover:bg-[#1aa34a] text-black font-semibold rounded-xl text-sm shadow-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-              >
-                <span className="material-symbols-outlined text-[19px]">
-                  photo_camera
-                </span>
-                <span>Open Scanner</span>
-              </button>
-            ) : (
-              <button
-                onClick={stopCamera}
-                className="w-full py-2.5 bg-white/[0.08] hover:bg-white/[0.12] text-white font-medium rounded-xl text-xs transition-all flex items-center justify-center gap-1.5"
-              >
-                <span className="material-symbols-outlined text-[17px]">
-                  stop_circle
-                </span>
-                <span>Stop Camera</span>
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Upload Mode */}
-      {activeMode === 'upload' && (
-        <div className="bg-[#1c1b1b] rounded-2xl border border-white/[0.08] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.5)] space-y-3">
-          <label className="border-2 border-dashed border-white/[0.12] hover:border-[#1db954]/50 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all bg-[#131313]/60 group">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-            <div className="w-12 h-12 rounded-full bg-[#1db954]/15 border border-[#1db954]/30 flex items-center justify-center text-[#53e076] group-hover:scale-105 transition-transform mb-3">
-              <span className="material-symbols-outlined text-[24px]">
-                file_upload
-              </span>
-            </div>
-            <span className="text-sm font-semibold text-white">
-              Upload QR Screenshot / Photo
-            </span>
-            <span className="text-xs text-[#a1a1aa] mt-1">
-              Supports PNG, JPG, WebP up to 10MB
-            </span>
-            <span className="mt-3 px-3 py-1 rounded-full bg-white/[0.06] text-[11px] text-[#53e076] font-medium border border-white/[0.05]">
-              Browse Gallery
-            </span>
-          </label>
-
-          {isLoading && (
-            <div className="flex items-center justify-center gap-2 p-3 text-xs text-[#53e076]">
-              <span className="w-4 h-4 border-2 border-[#1db954] border-t-transparent rounded-full animate-spin" />
-              <span>Decoding QR matrix and inspecting payload...</span>
-            </div>
-          )}
-
-          {cameraError && (
-            <div className="p-2.5 rounded-lg bg-red-500/15 border border-red-500/30 text-xs text-[#ffb4ab] flex items-start gap-2">
-              <span className="material-symbols-outlined text-[17px] shrink-0 mt-0.5">
-                error
-              </span>
-              <span>{cameraError}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Manual UPI ID Mode */}
-      {activeMode === 'manual' && (
-        <div className="bg-[#1c1b1b] rounded-2xl border border-white/[0.08] p-4 shadow-[0_4px_24px_rgba(0,0,0,0.5)] space-y-3">
-          <form onSubmit={handleManualCheck} className="space-y-3">
-            <div className="flex flex-col space-y-1.5">
-              <label className="text-xs font-semibold text-white flex items-center justify-between">
-                <span>UPI ID / Virtual Payment Address</span>
-                <span className="text-[10px] text-[#71717a]">e.g. name@bank</span>
-              </label>
-
-              <div className="flex items-center gap-2 px-3 py-2.5 bg-[#131313] rounded-xl border border-white/[0.06] focus-within:border-[#1db954] transition-all">
-                <span className="material-symbols-outlined text-[20px] text-[#53e076] shrink-0">
-                  alternate_email
-                </span>
-                <input
-                  type="text"
-                  value={manualUpi}
-                  onChange={(e) => setManualUpi(e.target.value)}
-                  placeholder="payee@okaxis or refund-desk@ybl"
-                  className="w-full bg-transparent text-sm text-white placeholder:text-[#71717a] focus:outline-none"
+          {/* Camera Viewfinder */}
+          {qrInputMode === 'camera' && (
+            <div className="space-y-3">
+              <div className="relative w-full aspect-square max-h-72 bg-black rounded-xl overflow-hidden flex items-center justify-center border-2 border-slate-900">
+                <video
+                  ref={videoRef}
+                  className="w-full h-full object-cover"
+                  muted
+                  playsInline
                 />
-                {manualUpi && (
-                  <button
-                    type="button"
-                    onClick={() => setManualUpi('')}
-                    className="p-1 text-[#a1a1aa] hover:text-white"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">close</span>
-                  </button>
+                <canvas ref={canvasRef} className="hidden" />
+
+                {/* Viewfinder Target Overlay */}
+                <div className="absolute inset-8 border-2 border-emerald-400/80 rounded-xl pointer-events-none flex items-center justify-center">
+                  <div className="w-full h-0.5 bg-emerald-400 animate-scan-line" />
+                  <div className="absolute top-2 left-2 text-[10px] bg-black/60 text-emerald-300 px-1.5 py-0.5 rounded">
+                    Align QR in frame
+                  </div>
+                </div>
+
+                {!cameraActive && !cameraError && (
+                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white p-4 text-center">
+                    <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin mb-2" />
+                    <span className="text-xs">Initializing camera stream...</span>
+                  </div>
                 )}
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={isLoading || !manualUpi.trim()}
-              className="w-full py-3 bg-[#1db954] hover:bg-[#1aa34a] disabled:opacity-50 disabled:pointer-events-none text-black font-semibold rounded-xl text-sm shadow-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                  <span>Checking VPA Reputation...</span>
-                </>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-[18px]">
-                    verified_user
-                  </span>
-                  <span>Inspect UPI ID</span>
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Quick Examples */}
-          <div className="pt-2 border-t border-white/[0.05] space-y-1.5">
-            <span className="text-[10px] text-[#71717a] uppercase tracking-wider font-semibold">
-              Test Common UPI Profiles
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { label: 'Fake Refund Desk', val: 'refund-desk@okhdfcbank' },
-                { label: 'OLX Advance Buyer', val: 'buyer-verification@ybl' },
-                { label: 'Legitimate Merchant', val: 'store@okaxis' },
-              ].map((s, i) => (
+              <div className="flex gap-2">
                 <button
-                  key={i}
-                  type="button"
-                  onClick={() => setManualUpi(s.val)}
-                  className="px-2.5 py-1 rounded-full bg-white/[0.05] hover:bg-white/[0.1] text-[11px] text-[#a1a1aa] hover:text-white border border-white/[0.04] transition-all active:scale-95"
+                  onClick={stopCamera}
+                  className="flex-1 py-2 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  {s.label}
+                  Stop Camera
                 </button>
-              ))}
+                <button
+                  onClick={startCamera}
+                  className="flex-1 py-2 px-3 rounded-xl bg-slate-900 text-white text-xs font-semibold flex items-center justify-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Restart Camera</span>
+                </button>
+              </div>
+
+              {cameraError && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <span>{cameraError}</span>
+                </div>
+              )}
             </div>
+          )}
+
+          {/* Image File Upload */}
+          {qrInputMode === 'upload' && (
+            <div className="space-y-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-8 px-4 border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl bg-slate-50/70 hover:bg-emerald-50/30 flex flex-col items-center justify-center cursor-pointer transition-all text-center"
+              >
+                <div className="w-12 h-12 rounded-xl bg-white shadow-xs border border-slate-200 flex items-center justify-center text-emerald-600 mb-2">
+                  <Upload className="w-6 h-6" />
+                </div>
+                <div className="text-xs font-bold text-slate-800">
+                  Tap to upload QR screenshot
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  Supports JPG, PNG, or WebP up to 5MB
+                </div>
+              </div>
+
+              {filePreview && (
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={filePreview}
+                    alt="Uploaded QR Preview"
+                    className="w-12 h-12 object-cover rounded-lg border border-slate-300"
+                  />
+                  <div className="flex-1 min-w-0 text-xs">
+                    <div className="font-semibold text-slate-800 truncate">
+                      {selectedFile?.name}
+                    </div>
+                    <div className="text-slate-400 text-[10px]">
+                      {(Number(selectedFile?.size) / 1024).toFixed(1)} KB
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setFilePreview(null);
+                      setSelectedFile(null);
+                      setDecodedData(null);
+                      setScanResult(null);
+                    }}
+                    className="p-1 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {uploadError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <span className="font-medium">{uploadError}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sample QR Button */}
+          <div className="pt-1 flex items-center gap-2">
+            <span className="text-[11px] text-slate-400">Sample:</span>
+            <button
+              onClick={() => handleScannedContent('upi://pay?pa=refund-desk@okhdfcbank&pn=OLX%20Refund%20Desk&am=15000&cu=INR&tn=Scan%20to%20receive%20refund')}
+              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200"
+            >
+              Test Reverse QR Scam (OLX Fake Refund)
+            </button>
           </div>
         </div>
       )}
 
-      {/* Raw Decoded Data Display */}
-      {decodedData && (
-        <div className="p-3 bg-[#131313] rounded-xl border border-white/[0.06] space-y-1">
-          <div className="flex items-center justify-between text-[11px] text-[#a1a1aa]">
-            <span className="font-semibold uppercase tracking-wider">
-              Decoded Raw Payload
-            </span>
-            <span className="text-[#53e076]">Parsed Successfully</span>
+      {/* Manual UPI Check Mode */}
+      {activeMode === 'upi' && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+          <label htmlFor="upi-vpa-input" className="text-xs font-bold uppercase tracking-wider text-slate-700 block">
+            Enter Recipient UPI ID (VPA)
+          </label>
+
+          <div className="relative">
+            <input
+              id="upi-vpa-input"
+              type="text"
+              value={upiInput}
+              onChange={(e) => {
+                setUpiInput(e.target.value);
+                if (upiError) setUpiError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleUpiCheck();
+              }}
+              placeholder="e.g. merchant@okhdfcbank or user@paytm"
+              className="w-full px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all font-mono"
+            />
           </div>
-          <div className="text-xs font-mono text-white/90 break-all select-all">
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400">Sample:</span>
+            <button
+              onClick={() => {
+                setUpiInput('refund-desk@okhdfcbank');
+                handleScannedContent('refund-desk@okhdfcbank');
+              }}
+              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200"
+            >
+              refund-desk@okhdfcbank
+            </button>
+          </div>
+
+          {upiError && (
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <span>{upiError}</span>
+            </div>
+          )}
+
+          <button
+            onClick={handleUpiCheck}
+            disabled={loading || !upiInput.trim()}
+            className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50"
+          >
+            {loading ? (
+              <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                <Search className="w-4 h-4" />
+                <span>Verify UPI Identifier</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Critical UPI Rule Box */}
+      <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-950 space-y-1.5 shadow-xs">
+        <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-amber-900">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+          Golden Rule of UPI & QR Security
+        </div>
+        <p className="text-xs text-amber-900/90 leading-relaxed font-medium">
+          You <strong className="underline">NEVER</strong> need to scan a QR code or enter your UPI PIN to <strong className="underline">RECEIVE</strong> money.
+          Entering your UPI PIN always <strong className="text-red-700">DEDUCTS</strong> money from your bank account.
+        </p>
+      </div>
+
+      {/* Decoded QR Raw Information */}
+      {decodedData && (
+        <div className="p-3.5 bg-slate-100 rounded-xl border border-slate-200 space-y-1 text-xs">
+          <div className="font-bold text-slate-700 flex items-center gap-1.5">
+            <Info className="w-3.5 h-3.5 text-slate-500" />
+            Decoded QR Content
+          </div>
+          <div className="font-mono text-slate-600 break-all p-2 bg-white rounded border border-slate-200 text-[11px]">
             {decodedData}
           </div>
         </div>
@@ -487,11 +541,22 @@ export const QrPayScreen: React.FC<QrPayScreenProps> = ({ onReportClick }) => {
 
       {/* Analysis Result */}
       {scanResult && (
-        <ResultCard
-          result={scanResult}
-          onClose={() => setScanResult(null)}
-          onReportClick={(target, category) => onReportClick(target, category)}
-        />
+        <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+          <ResultCard
+            result={scanResult}
+            onReport={(target, cat) => {
+              if (onOpenReportModal) {
+                onOpenReportModal(target, cat as ScamCategory);
+              } else if (onReportClick) {
+                onReportClick(target, cat);
+              }
+            }}
+            onClear={() => {
+              setScanResult(null);
+              setDecodedData(null);
+            }}
+          />
+        </div>
       )}
     </div>
   );

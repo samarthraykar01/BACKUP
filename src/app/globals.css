@@ -2,21 +2,28 @@
 
 @layer base {
   :root {
-    --bg-canvas: #131313;
-    --surface-card: #1c1b1b;
-    --surface-card-hover: #222222;
-    --surface-input: #131313;
-    --border-subtle: rgba(255, 255, 255, 0.08);
-    --border-faint: rgba(255, 255, 255, 0.05);
-    --brand-primary: #1db954;
-    --brand-accent: #53e076;
-    --brand-glow: rgba(29, 185, 84, 0.25);
-    --text-primary: #ffffff;
-    --text-secondary: #a1a1aa;
-    --text-muted: #71717a;
+    --bg-canvas: #f8fafc;
+    --surface-card: #ffffff;
+    --surface-card-hover: #f1f5f9;
+    --surface-input: #ffffff;
+    --border-subtle: #e2e8f0;
+    --border-faint: #f1f5f9;
+    --brand-primary: #059669;
+    --brand-primary-hover: #047857;
+    --brand-accent: #10b981;
+    --brand-glow: rgba(16, 185, 129, 0.15);
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
     --risk-danger: #ef4444;
+    --risk-danger-bg: #fef2f2;
+    --risk-danger-border: #fecaca;
     --risk-warning: #f59e0b;
+    --risk-warning-bg: #fffbeb;
+    --risk-warning-border: #fde68a;
     --risk-safe: #10b981;
+    --risk-safe-bg: #ecfdf5;
+    --risk-safe-border: #a7f3d0;
   }
 
   html, body {
@@ -33,11 +40,11 @@
 
   /* Safe Area support for mobile devices with notches & gesture bars */
   .pt-safe {
-    padding-top: max(16px, env(safe-area-inset-top, 0px));
+    padding-top: max(14px, env(safe-area-inset-top, 0px));
   }
 
   .pb-safe {
-    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(14px, env(safe-area-inset-bottom, 0px));
   }
 
   /* Custom scrollbar hiding for clean app feel */
@@ -46,7 +53,7 @@
     height: 4px;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.12);
     border-radius: 4px;
   }
 }
@@ -71,16 +78,38 @@
   font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }
 
-/* Pulse radar keyframes */
+/* Animations */
 @keyframes pulseGlow {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(29, 185, 84, 0.4);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
   }
   50% {
-    box-shadow: 0 0 0 8px rgba(29, 185, 84, 0);
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
   }
 }
 
 .animate-radar-pulse {
   animation: pulseGlow 2.5s infinite;
+}
+
+@keyframes scanLine {
+  0% {
+    top: 5%;
+  }
+  50% {
+    top: 90%;
+  }
+  100% {
+    top: 5%;
+  }
+}
+
+.animate-scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #10b981, transparent);
+  box-shadow: 0 0 8px #10b981;
+  animation: scanLine 2.5s ease-in-out infinite;
 }

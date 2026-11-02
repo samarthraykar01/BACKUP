@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { CommunityReport, ScamCategory } from './types';
+import { CommunityReport, ScamCategory, RiskLevel } from './types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -82,6 +82,23 @@ const INITIAL_COMMUNITY_REPORTS: CommunityReport[] = [
 // Fallback in-memory store
 let localReports: CommunityReport[] = [...INITIAL_COMMUNITY_REPORTS];
 
+interface DatabaseReportRow {
+  id: string;
+  target: string;
+  category: ScamCategory;
+  scam_type?: string;
+  scamType?: string;
+  description: string;
+  risk_level?: RiskLevel;
+  riskLevel?: RiskLevel;
+  reporter_name?: string;
+  reporterName?: string;
+  upvotes?: number;
+  created_at?: string;
+  createdAt?: string;
+  status?: 'active' | 'under_review' | 'verified_scam';
+}
+
 export async function fetchCommunityReports(category?: ScamCategory, searchQuery?: string): Promise<CommunityReport[]> {
   if (isSupabaseConfigured && supabase) {
     try {
@@ -100,11 +117,11 @@ export async function fetchCommunityReports(category?: ScamCategory, searchQuery
 
       const { data, error } = await query;
       if (!error && data && data.length > 0) {
-        return data.map((item: any) => ({
+        return (data as unknown as DatabaseReportRow[]).map((item) => ({
           id: item.id,
           target: item.target,
           category: item.category,
-          scamType: item.scam_type || item.scamType,
+          scamType: item.scam_type || item.scamType || 'Unknown Modus Operandi',
           description: item.description,
           riskLevel: item.risk_level || item.riskLevel || 'danger',
           reporterName: item.reporter_name || item.reporterName || 'Anonymous Citizen',
@@ -196,3 +213,147 @@ export async function checkCommunityBlacklist(target: string): Promise<Community
     return reportTarget === cleanTarget || cleanTarget.includes(reportTarget) || reportTarget.includes(cleanTarget);
   });
 }
+
+// Authentication Service
+export interface AuthUser {
+  id: string;
+  email: string;
+  name?: string;
+  isCloudAuth?: boolean;
+}
+
+const LOCAL_AUTH_STORAGE_KEY = 'scam_guard_session';
+
+export async function signInUser(
+  email: string,
+  password: string
+): Promise<{ user: AuthUser | null; error: string | null }> {
+  const cleanEmail = email.trim().toLowerCase();
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
+      if (error) {
+        return { user: null, error: error.message };
+      }
+
+      if (data?.user) {
+        const authUser: AuthUser = {
+          id: data.user.id,
+          email: data.user.email || cleanEmail,
+          name: data.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+          isCloudAuth: true,
+        };
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(LOCAL_AUTH_STORAGE_KEY, JSON.stringify(authUser));
+        }
+        return { user: authUser, error: null };
+      }
+    } catch (err: unknown) {
+      console.warn('Supabase signIn exception, falling back to local session', err);
+    }
+  }
+
+  // Fallback demo/offline authentication
+  if (password.length < 6) {
+    return { user: null, error: 'Password must be at least 6 characters long.' };
+  }
+
+  const authUser: AuthUser = {
+    id: `usr-${Date.now().toString(36)}`,
+    email: cleanEmail,
+    name: cleanEmail.split('@')[0].replace(/[._]/g, ' '),
+    isCloudAuth: false,
+  };
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(LOCAL_AUTH_STORAGE_KEY, JSON.stringify(authUser));
+  }
+
+  return { user: authUser, error: null };
+}
+
+export async function signUpUser(
+  email: string,
+  password: string
+): Promise<{ user: AuthUser | null; error: string | null; message?: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+      });
+
+      if (error) {
+        return { user: null, error: error.message };
+      }
+
+      if (data?.user) {
+        const authUser: AuthUser = {
+          id: data.user.id,
+          email: data.user.email || cleanEmail,
+          name: cleanEmail.split('@')[0],
+          isCloudAuth: true,
+        };
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(LOCAL_AUTH_STORAGE_KEY, JSON.stringify(authUser));
+        }
+        return {
+          user: authUser,
+          error: null,
+          message: data.session ? undefined : 'Confirmation email sent. Please check your inbox.',
+        };
+      }
+    } catch (err: unknown) {
+      console.warn('Supabase signUp exception', err);
+    }
+  }
+
+  // Fallback sign up
+  if (password.length < 6) {
+    return { user: null, error: 'Password must be at least 6 characters.' };
+  }
+
+  const authUser: AuthUser = {
+    id: `usr-${Date.now().toString(36)}`,
+    email: cleanEmail,
+    name: cleanEmail.split('@')[0],
+    isCloudAuth: false,
+  };
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(LOCAL_AUTH_STORAGE_KEY, JSON.stringify(authUser));
+  }
+
+  return { user: authUser, error: null };
+}
+
+export async function signOutUser(): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('Supabase signOut error', err);
+    }
+  }
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(LOCAL_AUTH_STORAGE_KEY);
+  }
+}
+
+export function getSavedSession(): AuthUser | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(LOCAL_AUTH_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+

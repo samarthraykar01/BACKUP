@@ -1,473 +1,364 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ScamCategory, ScamCheckResult } from '@/lib/types';
+import { NavTab } from './BottomNav';
+import { ScamCheckResult, CommunityReport, ScamCategory } from '@/lib/types';
 import { ResultCard } from './ResultCard';
+import {
+  Shield,
+  Search,
+  Phone,
+  Link2,
+  MessageSquare,
+  QrCode,
+  ArrowRight,
+  AlertTriangle,
+  ChevronRight,
+  PhoneCall,
+  Sparkles,
+  ThumbsUp
+} from 'lucide-react';
 
 interface HomeScreenProps {
-  onNavigateTab: (tab: 'home' | 'check' | 'qr-and-pay' | 'messages' | 'reports') => void;
-  onOpenReportModalWithTarget: (target: string, category: string) => void;
+  onNavigateTab: (tab: NavTab, prefillCategory?: ScamCategory, prefillTarget?: string) => void;
+  onOpenReportModal: (target?: string, category?: ScamCategory) => void;
+  onOpenSafetyTips: () => void;
+  communityReports: CommunityReport[];
+  onUpvoteReport: (id: string) => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   onNavigateTab,
-  onOpenReportModalWithTarget,
+  onOpenReportModal,
+  communityReports,
+  onUpvoteReport,
 }) => {
-  const [query, setQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<ScamCategory | undefined>(undefined);
-  const [isLoading, setIsLoading] = useState(false);
-  const [scanResult, setScanResult] = useState<ScamCheckResult | null>(null);
-  const [recentChecks, setRecentChecks] = useState<ScamCheckResult[]>([
-    {
-      target: '+91 98234 49210',
-      category: 'upi',
-      riskLevel: 'safe',
-      riskScore: 12,
-      summary: 'Verified Merchant UPI QR',
-      explanation: 'VPA belongs to a standard registered merchant handle. No blacklists or complaints recorded.',
-      findings: [
-        {
-          title: 'Registered NPCI Bank PSP',
-          description: 'Payment route processed via authorized Indian banking switch.',
-          severity: 'info',
-          category: 'Banking',
-        },
-      ],
-      recommendedAction: 'Safe to proceed. Confirm merchant display name at point of sale.',
-      communityReportsCount: 0,
-      verifiedStatus: 'clean',
-      timestamp: '10m ago',
-    },
-    {
-      target: 'Electricity bill pending: Call 98231... tonight to stop disconnection',
-      category: 'message',
-      riskLevel: 'danger',
-      riskScore: 92,
-      summary: 'Urgent Electricity Bill Extortion',
-      explanation: 'Classic extortion scam claiming power cutoff at 9:30 PM. Legitimate utilities never issue instant disconnection via SMS.',
-      findings: [
-        {
-          title: 'High Pressure Disconnection Threat',
-          description: 'Demands immediate contact to personal mobile number.',
-          severity: 'high',
-          category: 'Extortion',
-        },
-      ],
-      recommendedAction: 'DO NOT CALL. Power companies do not disconnect power via personal mobile callbacks.',
-      communityReportsCount: 48,
-      verifiedStatus: 'known_malicious',
-      timestamp: '2h ago',
-    },
-    {
-      target: 'paytm-kyc-update.top',
-      category: 'url',
-      riskLevel: 'suspicious',
-      riskScore: 68,
-      summary: 'Deceptive Phishing Domain',
-      explanation: 'Uses brand name "paytm" paired with low-cost disposable TLD (.top) for credential harvesting.',
-      findings: [
-        {
-          title: 'Brand Impersonation',
-          description: 'Domain does not belong to One97 Communications / Paytm.',
-          severity: 'high',
-          category: 'Phishing',
-        },
-      ],
-      recommendedAction: 'Do not open. Never enter OTP or login credentials.',
-      communityReportsCount: 19,
-      verifiedStatus: 'community_flagged',
-      timestamp: 'Yesterday',
-    },
-  ]);
+  const [quickInput, setQuickInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [quickResult, setQuickResult] = useState<ScamCheckResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleRunCheck = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmed = query.trim();
-    if (!trimmed) return;
+  const sampleScams = [
+    { label: 'Electricity Bill Cutoff', target: '+91 98234 11209', type: 'phone' as ScamCategory },
+    { label: 'Banking KYC Phishing', target: 'sbi-pan-update.top', type: 'url' as ScamCategory },
+    { label: 'Reverse QR PIN Fraud', target: 'refund-desk@okhdfcbank', type: 'upi' as ScamCategory },
+    { label: 'Part-Time Job SMS', target: 'Urgent: Earn ₹4,500/day by liking videos. Pay ₹1,999 to unlock portal.', type: 'message' as ScamCategory },
+  ];
 
-    setIsLoading(true);
-    setScanResult(null);
+  const handleQuickCheck = async (targetToScan?: string, categoryHint?: ScamCategory) => {
+    const val = (targetToScan || quickInput).trim();
+    if (!val) {
+      setErrorMsg('Please enter a phone number, link, message, or UPI ID to check.');
+      return;
+    }
+    setErrorMsg('');
+    setLoading(true);
+    setQuickResult(null);
 
     try {
       const res = await fetch('/api/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target: trimmed,
-          category: selectedCategory,
-        }),
+        body: JSON.stringify({ target: val, category: categoryHint }),
       });
-
+      const data = await res.json();
       if (!res.ok) {
-        throw new Error('Verification failed. Please check network connection.');
+        setErrorMsg(data.error || 'Failed to analyze input. Please try again.');
+      } else {
+        setQuickResult(data);
       }
-
-      const data: ScamCheckResult = await res.json();
-      setScanResult(data);
-
-      // Prepend to recent checks
-      setRecentChecks((prev) => [data, ...prev.filter((c) => c.target !== data.target).slice(0, 4)]);
-    } catch (err: any) {
-      console.error('Check error:', err);
+    } catch {
+      setErrorMsg('Network error. Unable to reach verification engine.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleSelectShortcut = (cat: ScamCategory, prefix = '') => {
-    if (cat === 'upi') {
-      onNavigateTab('qr-and-pay');
-      return;
-    }
-    if (cat === 'message') {
-      onNavigateTab('messages');
-      return;
-    }
-
-    setSelectedCategory(cat);
-    setQuery(prefix);
+  const handleSelectSample = (sample: typeof sampleScams[0]) => {
+    setQuickInput(sample.target);
+    handleQuickCheck(sample.target, sample.type);
   };
 
   return (
-    <div className="flex flex-col w-full px-4 pt-3 pb-24 space-y-5 max-w-lg mx-auto">
-      {/* 1. Header / Greeting Hero */}
-      <div className="flex flex-col space-y-2 pt-1">
-        <div className="inline-flex items-center gap-1.5 self-start px-2.5 py-1 rounded-full bg-[#1db954]/15 border border-[#1db954]/30 text-[#53e076]">
-          <span
-            className="material-symbols-outlined text-[16px] text-[#1db954] fill-icon"
-          >
-            shield_with_heart
-          </span>
-          <span className="text-xs font-semibold tracking-wide">
-            Consumer Protection Active
-          </span>
+    <div className="w-full max-w-lg mx-auto px-4 pt-4 pb-24 space-y-5 animate-in fade-in duration-150">
+      {/* Hero Protection Status Banner */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-700 via-emerald-800 to-slate-900 p-5 text-white shadow-md">
+        <div className="absolute top-0 right-0 -mr-6 -mt-6 w-32 h-32 rounded-full bg-emerald-500/20 blur-2xl pointer-events-none" />
+        <div className="flex items-start justify-between gap-3 relative z-10">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-semibold mb-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Threat Radar Online
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-white leading-tight">
+              Spot the Scam.<br />Stay Safe.
+            </h1>
+            <p className="text-xs text-emerald-100/80 mt-1 max-w-xs leading-relaxed">
+              Verify unknown callers, phishing links, urgent SMS messages, and QR payment codes instantly.
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/20">
+            <Shield className="w-7 h-7 text-emerald-300 stroke-[2.2]" />
+          </div>
         </div>
 
-        <h1 className="text-[24px] sm:text-[26px] leading-[30px] sm:leading-[32px] font-bold text-white tracking-tight">
-          Something look suspicious?
-        </h1>
-
-        <p className="text-xs sm:text-sm text-[#a1a1aa] leading-relaxed">
-          Check a number, message, email, link, or QR code before you trust it.
-        </p>
+        {/* Protection Stats Strip */}
+        <div className="mt-4 pt-3 border-t border-white/15 grid grid-cols-3 gap-2 text-center">
+          <div>
+            <div className="text-base font-bold text-white">5-in-1</div>
+            <div className="text-[10px] text-emerald-200 uppercase tracking-wide">Multi-Guard</div>
+          </div>
+          <div>
+            <div className="text-base font-bold text-white">&lt;200ms</div>
+            <div className="text-[10px] text-emerald-200 uppercase tracking-wide">Heuristic Engine</div>
+          </div>
+          <div>
+            <div className="text-base font-bold text-white">100%</div>
+            <div className="text-[10px] text-emerald-200 uppercase tracking-wide">Privacy Safe</div>
+          </div>
+        </div>
       </div>
 
-      {/* 2. Prominent Universal Search Bar */}
-      <div className="w-full bg-[#1c1b1b] rounded-2xl border border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.5)] p-3">
-        <form onSubmit={handleRunCheck} className="flex flex-col gap-2.5">
-          <div className="flex items-center gap-2.5 px-3 py-2.5 bg-[#131313] rounded-xl border border-white/[0.06] focus-within:border-[#1db954] transition-all">
-            <span className="material-symbols-outlined text-[22px] text-[#1db954] shrink-0">
-              search
-            </span>
+      {/* Universal Search & Quick Checker Card */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <label htmlFor="quick-check-input" className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <Search className="w-3.5 h-3.5 text-emerald-600" />
+            Universal Scam Checker
+          </label>
+          <span className="text-[11px] text-slate-400 font-medium">Auto-Detects Category</span>
+        </div>
 
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Enter phone, email, link, or UPI..."
-              className="w-full bg-transparent text-sm text-white placeholder:text-[#71717a] focus:outline-none"
-            />
-
-            {query.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setQuery('')}
-                className="p-1 rounded-full text-[#a1a1aa] hover:text-white hover:bg-white/[0.08] transition-colors"
-                aria-label="Clear input"
-              >
-                <span className="material-symbols-outlined text-[18px]">close</span>
-              </button>
+        <div className="relative">
+          <input
+            id="quick-check-input"
+            type="text"
+            value={quickInput}
+            onChange={(e) => {
+              setQuickInput(e.target.value);
+              if (errorMsg) setErrorMsg('');
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleQuickCheck();
+            }}
+            placeholder="Paste phone, URL, message, or UPI ID..."
+            className="w-full pl-3.5 pr-24 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
+          />
+          <button
+            onClick={() => handleQuickCheck()}
+            disabled={loading}
+            className="absolute right-1.5 top-1.5 bottom-1.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-semibold rounded-lg text-xs flex items-center gap-1.5 transition-all shadow-sm disabled:opacity-60"
+          >
+            {loading ? (
+              <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                <span>Check</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </>
             )}
-          </div>
+          </button>
+        </div>
 
-          <div className="flex items-center justify-between gap-2 px-1 pt-0.5">
-            <div className="flex items-center gap-1.5 text-[#a1a1aa] text-[11px]">
-              <span className="material-symbols-outlined text-[15px] text-[#1db954] fill-icon">
-                verified
-              </span>
-              <span>100% private & encrypted scan</span>
-            </div>
+        {errorMsg && (
+          <p className="text-xs font-medium text-red-600 flex items-center gap-1">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            {errorMsg}
+          </p>
+        )}
 
-            <button
-              type="submit"
-              disabled={isLoading || !query.trim()}
-              className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-5 py-2.5 bg-[#1db954] hover:bg-[#1aa34a] disabled:opacity-50 disabled:pointer-events-none text-black font-semibold rounded-xl text-xs sm:text-sm shadow-sm active:scale-[0.98] transition-all"
-            >
-              {isLoading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                  <span>Scanning...</span>
-                </>
-              ) : (
-                <>
-                  <span>Check Now</span>
-                  <span className="material-symbols-outlined text-[18px]">
-                    arrow_forward
-                  </span>
-                </>
-              )}
-            </button>
+        {/* Quick Sample Scam Pills */}
+        <div>
+          <div className="text-[11px] font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-amber-500" />
+            Try a real-world scam example:
           </div>
-        </form>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            {sampleScams.map((sample, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleSelectSample(sample)}
+                className="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-slate-700 text-[11px] font-medium border border-slate-200/80 active:scale-95 transition-all shrink-0"
+              >
+                {sample.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Live Scan Result (when active) */}
-      {scanResult && (
-        <ResultCard
-          result={scanResult}
-          onClose={() => setScanResult(null)}
-          onReportClick={(target, category) =>
-            onOpenReportModalWithTarget(target, category)
-          }
-        />
+      {/* Quick Check Result if available */}
+      {quickResult && (
+        <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+          <ResultCard
+            result={quickResult}
+            onReport={(target, cat) => onOpenReportModal(target, cat as ScamCategory)}
+            onClear={() => setQuickResult(null)}
+          />
+        </div>
       )}
 
-      {/* 3. Five Compact Quick Shortcuts */}
-      <div className="flex flex-col space-y-2.5">
+      {/* Feature Navigation Grid */}
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-white tracking-wide uppercase">
-            Scan by Category
-          </span>
-          <span className="text-[11px] text-[#a1a1aa]">Tap to start</span>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Dedicated Checkers
+          </h2>
+          <span className="text-[11px] text-slate-400">Mobile Guard Tools</span>
         </div>
 
-        <div className="grid grid-cols-5 gap-2">
-          {/* 1: Phone */}
+        <div className="grid grid-cols-2 gap-2.5">
+          {/* Phone Checker Card */}
           <button
-            onClick={() => handleSelectShortcut('phone', '+91 ')}
-            className="group flex flex-col items-center gap-1.5 p-2 rounded-xl bg-[#1c1b1b] hover:bg-[#252525] border border-white/[0.06] transition-all text-center active:scale-95"
+            onClick={() => onNavigateTab('check', 'phone')}
+            className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 hover:shadow-sm text-left transition-all group active:scale-98"
           >
-            <div className="w-10 h-10 rounded-full bg-[#201f1f] border border-white/[0.05] flex items-center justify-center group-hover:bg-[#1db954]/20 transition-colors">
-              <span className="material-symbols-outlined text-[20px] text-[#53e076] fill-icon">
-                call
-              </span>
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
+              <Phone className="w-5 h-5" />
             </div>
-            <span className="text-[11px] text-white truncate w-full font-medium">
-              Phone
-            </span>
+            <div className="font-bold text-sm text-slate-900 group-hover:text-emerald-700 transition-colors">
+              Phone Checker
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+              Extortion & robocalls
+            </div>
           </button>
 
-          {/* 2: Email */}
+          {/* Website Link Checker */}
           <button
-            onClick={() => handleSelectShortcut('email', '')}
-            className="group flex flex-col items-center gap-1.5 p-2 rounded-xl bg-[#1c1b1b] hover:bg-[#252525] border border-white/[0.06] transition-all text-center active:scale-95"
+            onClick={() => onNavigateTab('check', 'url')}
+            className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 hover:shadow-sm text-left transition-all group active:scale-98"
           >
-            <div className="w-10 h-10 rounded-full bg-[#201f1f] border border-white/[0.05] flex items-center justify-center group-hover:bg-[#1db954]/20 transition-colors">
-              <span className="material-symbols-outlined text-[20px] text-[#53e076] fill-icon">
-                mail
-              </span>
+            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
+              <Link2 className="w-5 h-5" />
             </div>
-            <span className="text-[11px] text-white truncate w-full font-medium">
-              Email
-            </span>
+            <div className="font-bold text-sm text-slate-900 group-hover:text-emerald-700 transition-colors">
+              Link Checker
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+              Phishing & fake portals
+            </div>
           </button>
 
-          {/* 3: Message */}
+          {/* QR & UPI Guard */}
           <button
-            onClick={() => handleSelectShortcut('message', '')}
-            className="group flex flex-col items-center gap-1.5 p-2 rounded-xl bg-[#1c1b1b] hover:bg-[#252525] border border-white/[0.06] transition-all text-center active:scale-95"
+            onClick={() => onNavigateTab('qr-and-pay')}
+            className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 hover:shadow-sm text-left transition-all group active:scale-98"
           >
-            <div className="w-10 h-10 rounded-full bg-[#201f1f] border border-white/[0.05] flex items-center justify-center group-hover:bg-[#1db954]/20 transition-colors">
-              <span className="material-symbols-outlined text-[20px] text-[#53e076] fill-icon">
-                chat
-              </span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
+              <QrCode className="w-5 h-5" />
             </div>
-            <span className="text-[11px] text-white truncate w-full font-medium">
-              Message
-            </span>
+            <div className="font-bold text-sm text-slate-900 group-hover:text-emerald-700 transition-colors">
+              QR & UPI Guard
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+              Reverse PIN scams
+            </div>
           </button>
 
-          {/* 4: Website */}
+          {/* SMS / Message Analyzer */}
           <button
-            onClick={() => handleSelectShortcut('url', 'https://')}
-            className="group flex flex-col items-center gap-1.5 p-2 rounded-xl bg-[#1c1b1b] hover:bg-[#252525] border border-white/[0.06] transition-all text-center active:scale-95"
+            onClick={() => onNavigateTab('messages')}
+            className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 hover:shadow-sm text-left transition-all group active:scale-98"
           >
-            <div className="w-10 h-10 rounded-full bg-[#201f1f] border border-white/[0.05] flex items-center justify-center group-hover:bg-[#1db954]/20 transition-colors">
-              <span className="material-symbols-outlined text-[20px] text-[#53e076] fill-icon">
-                link
-              </span>
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
+              <MessageSquare className="w-5 h-5" />
             </div>
-            <span className="text-[11px] text-white truncate w-full font-medium">
-              Website
-            </span>
-          </button>
-
-          {/* 5: QR / UPI */}
-          <button
-            onClick={() => handleSelectShortcut('upi', '')}
-            className="group flex flex-col items-center gap-1.5 p-2 rounded-xl bg-[#1c1b1b] hover:bg-[#252525] border border-white/[0.06] transition-all text-center active:scale-95"
-          >
-            <div className="w-10 h-10 rounded-full bg-[#201f1f] border border-white/[0.05] flex items-center justify-center group-hover:bg-[#1db954]/20 transition-colors">
-              <span className="material-symbols-outlined text-[20px] text-[#53e076] fill-icon">
-                qr_code_scanner
-              </span>
+            <div className="font-bold text-sm text-slate-900 group-hover:text-emerald-700 transition-colors">
+              Message Analyzer
             </div>
-            <span className="text-[11px] text-white truncate w-full font-medium">
-              QR / UPI
-            </span>
+            <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+              Urgency & APK threats
+            </div>
           </button>
         </div>
       </div>
 
-      {/* Safety Overview / Device Shield Card */}
-      <div className="flex items-center justify-between p-3.5 bg-[#1c1b1b] rounded-2xl border border-white/[0.06]">
-        <div className="flex items-center gap-3">
-          <div className="relative flex items-center justify-center w-11 h-11 rounded-full bg-[#131313] text-[#1db954]">
-            <svg className="w-11 h-11 transform -rotate-90" viewBox="0 0 36 36">
-              <path
-                className="text-white/[0.08]"
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3.2"
-              />
-              <path
-                className="text-[#1db954]"
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                fill="none"
-                stroke="currentColor"
-                strokeDasharray="92, 100"
-                strokeLinecap="round"
-                strokeWidth="3.2"
-              />
-            </svg>
-            <span className="absolute text-xs font-bold text-white">92</span>
-          </div>
-
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold text-white leading-tight">
-              Your Device Shield
-            </span>
-            <span className="text-xs text-[#a1a1aa] mt-0.5">
-              Real-time payment & link guards on
-            </span>
-          </div>
-        </div>
-
-        <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-[#1db954]/15 border border-[#1db954]/30 text-[#53e076] text-xs font-semibold">
-          Optimal
-        </span>
-      </div>
-
-      {/* 4. Recent Checks Section */}
-      <div className="flex flex-col space-y-2.5">
+      {/* Community Threat Radar Highlights */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <h2 className="text-sm font-semibold text-white tracking-wide uppercase">
-              Recent Checks
+            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              Live Threat Radar
             </h2>
-            <span className="w-5 h-5 rounded-full bg-white/[0.08] flex items-center justify-center text-[10px] font-semibold text-[#a1a1aa]">
-              {recentChecks.length}
-            </span>
           </div>
           <button
-            onClick={() => onNavigateTab('check')}
-            className="text-xs text-[#53e076] hover:text-[#1db954] font-semibold transition-colors"
+            onClick={() => onNavigateTab('reports')}
+            className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-0.5"
           >
-            Check History
+            <span>View All</span>
+            <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="flex flex-col space-y-2">
-          {recentChecks.map((item, idx) => {
-            const isDanger = item.riskLevel === 'danger';
-            const isSuspicious = item.riskLevel === 'suspicious';
-            const isSafe = item.riskLevel === 'safe';
-
-            return (
-              <div
-                key={idx}
-                onClick={() => setScanResult(item)}
-                className="flex items-center justify-between p-3.5 bg-[#1c1b1b] rounded-xl border border-white/[0.06] hover:bg-[#222222] cursor-pointer transition-all active:scale-[0.99]"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border ${
-                      isDanger
-                        ? 'bg-red-500/15 border-red-500/20 text-[#ef4444]'
-                        : isSuspicious
-                        ? 'bg-amber-500/15 border-amber-500/20 text-[#f59e0b]'
-                        : 'bg-[#1db954]/15 border-[#1db954]/20 text-[#53e076]'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[18px]">
-                      {item.category === 'upi'
-                        ? 'qr_code_scanner'
-                        : item.category === 'message'
-                        ? 'chat'
-                        : item.category === 'phone'
-                        ? 'call'
-                        : item.category === 'email'
-                        ? 'mail'
-                        : 'link'}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-medium text-white truncate">
-                      {item.target}
-                    </span>
-                    <span className="text-xs text-[#a1a1aa] truncate">
-                      {item.summary}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col items-end gap-1 shrink-0 pl-2">
-                  <span
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
-                      isDanger
-                        ? 'bg-red-500/15 border-red-500/30 text-[#ffb4ab]'
-                        : isSuspicious
-                        ? 'bg-amber-500/15 border-amber-500/30 text-[#f9bc45]'
-                        : 'bg-[#1db954]/15 border-[#1db954]/30 text-[#53e076]'
-                    }`}
-                  >
-                    {isDanger ? 'Scam' : isSuspicious ? 'Suspicious' : 'Safe'}
+        <div className="space-y-2.5">
+          {communityReports.slice(0, 3).map((rep) => (
+            <div
+              key={rep.id}
+              className="p-3 rounded-xl bg-slate-50 border border-slate-200/70 hover:border-slate-300 transition-all flex items-start justify-between gap-3"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 font-bold text-[10px] uppercase">
+                    {rep.category}
                   </span>
-                  <span className="text-[10px] text-[#71717a]">
-                    {item.timestamp || 'Recent'}
+                  <span className="text-xs font-bold text-slate-900 truncate">
+                    {rep.scamType}
                   </span>
                 </div>
+                <div className="text-xs text-slate-600 font-mono mt-0.5 truncate">
+                  {rep.target}
+                </div>
+                <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-snug">
+                  {rep.description}
+                </p>
               </div>
-            );
-          })}
+
+              <div className="flex flex-col items-end shrink-0">
+                <button
+                  onClick={() => onUpvoteReport(rep.id)}
+                  className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 active:scale-95 text-xs font-semibold text-slate-700 flex items-center gap-1 shadow-2xs"
+                  title="Upvote this scam report"
+                >
+                  <ThumbsUp className="w-3 h-3 text-slate-500" />
+                  <span>{rep.upvotes}</span>
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
+
+        <button
+          onClick={() => onOpenReportModal()}
+          className="w-full py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs flex items-center justify-center gap-1.5 active:scale-98 transition-all"
+        >
+          <span>Report a New Scam Attempt</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
       </div>
 
-      {/* 5. Compact Safety Reminder Tip */}
-      <div className="p-3.5 bg-[#1c1b1b] rounded-2xl border border-white/[0.06] flex items-start gap-3">
-        <div className="w-8 h-8 rounded-full bg-[#1db954]/15 border border-[#1db954]/30 flex items-center justify-center shrink-0 mt-0.5">
-          <span className="material-symbols-outlined text-[19px] text-[#53e076] fill-icon">
-            lightbulb
-          </span>
-        </div>
-        <div className="flex flex-col space-y-0.5 min-w-0">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-white">Safety Tip</span>
-            <span className="text-[10px] text-[#71717a]">Just now</span>
+      {/* Cybercrime Helpline Emergency Card */}
+      <div className="rounded-2xl bg-gradient-to-r from-red-600 to-rose-700 text-white p-4 shadow-sm flex items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-red-200">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            National Helpline (India)
           </div>
-          <p className="text-xs text-[#a1a1aa] leading-relaxed">
-            Genuine banks and payment apps never ask for your UPI PIN to receive money or cashbacks.
+          <div className="text-lg font-extrabold tracking-tight">
+            Dial 1930
+          </div>
+          <p className="text-[11px] text-red-100">
+            Immediate financial freeze within golden hours.
           </p>
         </div>
-      </div>
-
-      {/* Ambient Community Card */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-[#1c1b1b] to-[#222222] border border-white/[0.06] flex items-center justify-between">
-        <div className="flex flex-col">
-          <span className="text-sm font-semibold text-white">Community Radar</span>
-          <span className="text-xs text-[#a1a1aa]">14,289 scam alerts shared this week</span>
-        </div>
-        <button
-          onClick={() => onNavigateTab('reports')}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/[0.08] hover:bg-white/[0.14] text-white border border-white/[0.08] text-xs font-medium transition-all active:scale-95"
+        <a
+          href="tel:1930"
+          className="px-3.5 py-2 rounded-xl bg-white text-red-700 font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-sm active:scale-95 transition-all"
         >
-          <span className="material-symbols-outlined text-[16px] text-[#53e076]">
-            add_alert
-          </span>
-          <span>Report Scam</span>
-        </button>
+          <PhoneCall className="w-3.5 h-3.5 fill-red-700" />
+          <span>Call 1930</span>
+        </a>
       </div>
     </div>
   );

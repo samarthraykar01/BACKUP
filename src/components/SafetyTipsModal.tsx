@@ -41,21 +41,21 @@ export const SafetyTipsModal: React.FC<SafetyTipsModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-lg bg-[#1c1b1b] rounded-t-3xl sm:rounded-3xl border border-white/[0.08] p-5 shadow-2xl max-h-[88vh] overflow-y-auto space-y-4 pb-safe">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl border border-[#E5EAE5] p-5 shadow-xl max-h-[88vh] overflow-y-auto space-y-4 pb-safe">
         {/* Modal Header */}
-        <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
+        <div className="flex items-center justify-between pb-2 border-b border-[#E5EAE5]">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-[#1db954]/15 border border-[#1db954]/30 flex items-center justify-center text-[#53e076]">
+            <div className="w-8 h-8 rounded-full bg-[#EAF8EF] border border-[#1DB954]/30 flex items-center justify-center text-[#1DB954]">
               <span className="material-symbols-outlined text-[18px]">
                 local_police
               </span>
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">
+              <h3 className="text-sm font-bold text-[#191C19]">
                 Safety Guides & Cyber Helpline
               </h3>
-              <p className="text-[11px] text-[#a1a1aa]">
+              <p className="text-[11px] text-[#6B756D]">
                 Official Fraud Prevention Protocols
               </p>
             </div>
@@ -63,52 +63,52 @@ export const SafetyTipsModal: React.FC<SafetyTipsModalProps> = ({
 
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[#a1a1aa] hover:text-white hover:bg-white/[0.08]"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[#6B756D] hover:text-[#191C19] hover:bg-[#F0F4F0] transition-colors"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
         </div>
 
-        {/* Cyber Emergency Helpline Banner */}
-        <div className="p-3.5 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-center justify-between gap-3">
+        {/* Emergency Helpline Banner */}
+        <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-between gap-3">
           <div className="flex flex-col">
-            <span className="text-[10px] uppercase font-bold text-[#ffb4ab] tracking-wider">
+            <span className="text-[10px] uppercase font-bold text-[#D64545] tracking-wider">
               Emergency Indian Cybercrime Portal
             </span>
-            <span className="text-sm font-bold text-white">
+            <span className="text-sm font-bold text-[#191C19]">
               National Helpline 1930
             </span>
-            <span className="text-[11px] text-[#a1a1aa] mt-0.5">
+            <span className="text-[11px] text-[#6B756D] mt-0.5">
               Report financial fraud within 2 hours to freeze funds
             </span>
           </div>
 
           <a
             href="tel:1930"
-            className="px-3.5 py-2 bg-[#ef4444] hover:bg-[#dc2626] text-white font-bold rounded-xl text-xs flex items-center gap-1 shadow-md active:scale-95 transition-all shrink-0"
+            className="px-3.5 py-2 bg-[#D64545] hover:bg-red-700 text-white font-bold rounded-xl text-xs flex items-center gap-1 shadow-xs active:scale-95 transition-all shrink-0"
           >
             <span className="material-symbols-outlined text-[16px]">call</span>
             <span>Dial 1930</span>
           </a>
         </div>
 
-        {/* Tips list */}
+        {/* Tips List */}
         <div className="space-y-2.5">
           {tips.map((t, idx) => (
             <div
               key={idx}
-              className="p-3 bg-[#131313] rounded-xl border border-white/[0.05] space-y-1 text-xs"
+              className="p-3 bg-[#F7F9F7] rounded-xl border border-[#E5EAE5] space-y-1 text-xs"
             >
-              <div className="flex items-center gap-2 text-white font-semibold">
-                <span className="material-symbols-outlined text-[17px] text-[#53e076]">
+              <div className="flex items-center gap-2 text-[#191C19] font-bold">
+                <span className="material-symbols-outlined text-[17px] text-[#1DB954]">
                   {t.icon}
                 </span>
                 <span>{t.title}</span>
               </div>
-              <p className="text-[#53e076] font-medium leading-snug">
+              <p className="text-[#169C46] font-semibold leading-snug">
                 {t.rule}
               </p>
-              <p className="text-[#a1a1aa] text-[11px] leading-relaxed">
+              <p className="text-[#6B756D] text-[11px] leading-relaxed">
                 {t.detail}
               </p>
             </div>
@@ -117,7 +117,7 @@ export const SafetyTipsModal: React.FC<SafetyTipsModalProps> = ({
 
         <button
           onClick={onClose}
-          className="w-full py-2.5 bg-white/[0.08] hover:bg-white/[0.12] text-white font-medium rounded-xl text-xs transition-colors"
+          className="w-full py-2.5 bg-[#F7F9F7] hover:bg-[#EDF1ED] text-[#191C19] border border-[#E5EAE5] font-semibold rounded-xl text-xs transition-colors"
         >
           Got It, Stay Protected
         </button>
