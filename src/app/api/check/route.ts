@@ -32,10 +32,10 @@ export async function POST(req: NextRequest) {
 
     const selectedCategory: ScamCategory | undefined =
       category === 'phone' ||
-      category === 'email' ||
-      category === 'url' ||
-      category === 'message' ||
-      category === 'upi'
+        category === 'email' ||
+        category === 'url' ||
+        category === 'message' ||
+        category === 'upi'
         ? (category as ScamCategory)
         : undefined;
 
